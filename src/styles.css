@@ -79,3 +79,40 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 @media (prefers-reduced-motion: reduce) {
   *, *::after, *::before { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
+
+.session-settings { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 16px 18px; margin-bottom: 20px; }
+.session-settings .field { flex: 1 1 260px; }
+.field { display: grid; gap: 7px; color: #e9ecec; font-size: 13px; font-weight: 600; }
+.field input { width: 100%; min-width: 0; height: 39px; border: 1px solid #3a4549; border-radius: 8px; background: #131819; padding-inline: 11px; font-weight: 400; }
+.field input::placeholder { color: var(--muted); }
+.primary-button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; width: fit-content; border-radius: 8px; padding: 10px 15px; background: var(--accent); color: #182016; font-size: 13px; font-weight: 700; }
+.primary-button:hover:not(:disabled) { background: #dcffae; }
+.primary-button:disabled, .unlock button:disabled { cursor: not-allowed; }
+.session-notice { margin-block: 0 16px; color: var(--accent); font-size: 13px; }
+.action-error { margin: 9px 0 13px; color: #ffc3ae; font-size: 13px; overflow-wrap: anywhere; }
+
+.curtain-layout { display: grid; min-height: 100vh; place-items: center; padding: 32px; background: radial-gradient(ellipse at 50% 35%, #25302bf8, #111617f7 65%); }
+.curtain-content { display: grid; max-width: 680px; justify-items: center; gap: 14px; text-align: center; }
+.curtain-content h1 { font-size: clamp(24px, 5vw, 48px); font-weight: 700; letter-spacing: -.05em; line-height: 1.1; overflow-wrap: anywhere; }
+.curtain-content p { color: var(--muted); overflow-wrap: anywhere; max-width: 100%; }
+.curtain-content .curtain-goal { margin-block: 5px 12px; color: #e9ecec; }
+.curtain-content .action-error { color: #ffc3ae; }
+.blocked-title { font-size: 14px; }
+.emergency-link { margin-top: 15px; color: var(--muted); }
+.replacement-list { display: grid; max-height: 160px; width: min(400px, 100%); gap: 6px; overflow: auto; padding: 3px; }
+.replacement-list button { width: 100%; text-align: left; overflow-wrap: anywhere; }
+
+.unlock { display: grid; width: min(460px, 100%); gap: 13px; border: 1px solid var(--line); border-radius: 14px; padding: 26px; background: var(--surface); box-shadow: 0 20px 55px #0005; }
+.unlock h2 { font-size: 23px; font-weight: 700; }
+.unlock p { color: var(--muted); font-size: 14px; }
+.unlock .action-error { color: #ffc3ae; }
+.unlock-icon { color: #efc275; }
+.unlock form { display: grid; justify-items: start; gap: 10px; }
+.unlock .field { width: 100%; }
+.challenge { max-width: 100%; overflow-wrap: anywhere; color: #efc275; background: #141819; border-radius: 7px; padding: 8px 11px; font-size: 15px; letter-spacing: .09em; user-select: none; }
+.hold-button { position: relative; isolation: isolate; padding: 9px 12px; overflow: hidden; border: 1px solid #6d5744; border-radius: 8px; color: #ffe3b9; font-size: 13px; touch-action: none; user-select: none; }
+.hold-button::before { content: ""; z-index: -1; position: absolute; inset: 0; background: #785837; transform-origin: left; transform: scaleX(0); }
+.hold-button.holding::before { transform: scaleX(1); transition: transform 10s linear; }
+@media (prefers-reduced-motion: reduce) {
+  .hold-button.holding::before { opacity: .65; }
+}

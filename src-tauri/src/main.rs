@@ -1,9 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(windows)]
+mod controller;
+#[cfg(windows)]
+mod policy;
+#[cfg(windows)]
 mod win32;
+#[cfg(windows)]
+use tauri::Manager;
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct OpenWindow {
     hwnd: isize,
     title: String,
@@ -27,12 +33,37 @@ fn list_open_windows() -> Result<Vec<OpenWindow>, String> {
 }
 
 fn main() {
-    if let Err(error) = tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![list_open_windows])
-        .run(tauri::generate_context!())
-    {
-        eprintln!("Could not run Anchor: {error}");
-        std::process::exit(1);
+    let builder =
+        tauri::Builder::default().plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    #[cfg(windows)]
+    let builder = builder
+        .manage(controller::SessionState::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() != "main" {
+                    api.prevent_close();
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            list_open_windows,
+            controller::session_command
+        ]);
+    #[cfg(not(windows))]
+    let builder = builder.invoke_handler(tauri::generate_handler![list_open_windows]);
+    match builder.build(tauri::generate_context!()) {
+        Ok(app) => app.run(|_app, _event| {
+            #[cfg(windows)]
+            if matches!(_event, tauri::RunEvent::Exit) {
+                _app.state::<controller::SessionState>()
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .shutdown();
+            }
+        }),
+        Err(error) => {
+            eprintln!("Could not run Anchor: {error}");
+            std::process::exit(1);
+        }
     }
 }

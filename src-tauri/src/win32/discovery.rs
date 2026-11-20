@@ -89,22 +89,7 @@ fn inspect_window(hwnd: HWND) -> Result<Option<OpenWindow>> {
             return Ok(None);
         }
 
-        SetLastError(WIN32_ERROR(0));
-        let title_length = GetWindowTextLengthW(hwnd);
-        if title_length == 0 {
-            return if GetLastError().0 == 0 {
-                Ok(None)
-            } else {
-                Err(Error::from_thread())
-            };
-        }
-        let mut buffer = vec![0u16; title_length as usize + 1];
-        SetLastError(WIN32_ERROR(0));
-        let written = GetWindowTextW(hwnd, &mut buffer) as usize;
-        if written == 0 && GetLastError().0 != 0 {
-            return Err(Error::from_thread());
-        }
-        let title = String::from_utf16_lossy(&buffer[..written]);
+        let title = window_title(hwnd)?;
         if title.trim().is_empty() {
             return Ok(None);
         }
@@ -122,7 +107,29 @@ fn inspect_window(hwnd: HWND) -> Result<Option<OpenWindow>> {
     }
 }
 
-fn executable_name(pid: u32) -> Result<String> {
+pub(super) fn window_title(hwnd: HWND) -> Result<String> {
+    // Read caption text using a buffer sized for the indicated UTF-16 length.
+    unsafe {
+        SetLastError(WIN32_ERROR(0));
+        let title_length = GetWindowTextLengthW(hwnd);
+        if title_length == 0 {
+            return if GetLastError().0 == 0 {
+                Ok(String::new())
+            } else {
+                Err(Error::from_thread())
+            };
+        }
+        let mut buffer = vec![0u16; title_length as usize + 1];
+        SetLastError(WIN32_ERROR(0));
+        let written = GetWindowTextW(hwnd, &mut buffer) as usize;
+        if written == 0 && GetLastError().0 != 0 {
+            return Err(Error::from_thread());
+        }
+        Ok(String::from_utf16_lossy(&buffer[..written]))
+    }
+}
+
+pub(super) fn executable_name(pid: u32) -> Result<String> {
     let mut buffer = vec![0u16; 32_768];
     let mut length = buffer.len() as u32;
     // The buffer and its length match. Close the owned handle on both query outcomes.

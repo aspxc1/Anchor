@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Anchor, Check, Layers2, Monitor, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "./session";
 import { filterWindows, retainSelection, type OpenWindow } from "./windowSelection";
 
 export function Dashboard() {
+  const { snapshot, error: sessionError, act } = useSession();
+  const [goal, setGoal] = useState("");
   const [windows, setWindows] = useState<OpenWindow[]>([]);
   const [selection, setSelection] = useState<ReadonlyMap<number, number>>(new Map());
   const [search, setSearch] = useState("");
@@ -61,6 +64,20 @@ export function Dashboard() {
           <h1>Session setup</h1>
           <p>Choose the windows you need for your next focus session.</p>
         </header>
+        {snapshot?.phase === "Aborted" && (
+          <p className="session-notice" role="status">Session unlocked. Anchor recorded {snapshot.blocked_count} blocked switches.</p>
+        )}
+        {(sessionError || snapshot?.error) && <p className="action-error" role="alert">{sessionError || snapshot?.error}</p>}
+        <form className="session-settings panel" onSubmit={(event) => {
+          event.preventDefault();
+          void act({ type: "start", goal, windows: allowed.map(({ hwnd, pid }) => ({ hwnd, pid })) });
+        }}>
+          <label className="field">
+            <span>Session goal</span>
+            <input value={goal} onChange={(event) => setGoal(event.target.value)} maxLength={240} placeholder="What will you work on?" required />
+          </label>
+          <button className="primary-button" disabled={!goal.trim() || allowed.length === 0 || snapshot?.phase === "ActiveFocus"}>Start focus</button>
+        </form>
         <div className="grid min-h-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
           <section className="panel" aria-labelledby="open-windows" aria-busy={loading}>
             <div className="panel-header">

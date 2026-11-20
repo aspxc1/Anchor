@@ -21,3 +21,10 @@ npm run tauri dev
 3. Select multiple windows, temporarily hide them from the list with a search, and clear the search. The selections should stay in the allowlist.
 4. Close a selected window and click **Refresh**. Verify that only the closed window is removed from the allowlist. Open a new window and verify that it appears after refreshing.
 5. Minimize a visible, titled app and refresh. It should remain available for selection when Windows still reports it as visible and uncloaked.
+
+## Focus enforcement acceptance check
+
+1. Start a session with only Notepad selected. Switch to a different app on each connected display. Confirm the curtain covers the display that contains the blocked app and names it.
+2. Click **Return to Focus** with Notepad first visible, then minimized. Confirm Notepad returns to the foreground, the curtain hides, and Notepad's native **Save As** dialog is allowed.
+3. Open Task Manager during enforcement and confirm it stays usable. Close every allowed window, then switch to another application. Choose a replacement from the curtain and confirm the session continues.
+4. Start an emergency hold, release it early, then verify a new hold starts from zero. Try the typed challenge and the full ten-second hold in separate sessions. Both should open the dashboard and leave focus enforcement stopped.
