@@ -3,7 +3,11 @@
 #[cfg(windows)]
 mod controller;
 #[cfg(windows)]
+mod desktop;
+#[cfg(windows)]
 mod policy;
+#[cfg(windows)]
+mod timing;
 #[cfg(windows)]
 mod win32;
 #[cfg(windows)]
@@ -38,10 +42,14 @@ fn main() {
     #[cfg(windows)]
     let builder = builder
         .manage(controller::SessionState::default())
+        .setup(desktop::setup)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() != "main" {
-                    api.prevent_close();
+                api.prevent_close();
+                if window.label() == "main" {
+                    if let Err(error) = window.hide() {
+                        eprintln!("Could not hide the dashboard to the tray: {error}");
+                    }
                 }
             }
         })
@@ -55,6 +63,7 @@ fn main() {
         Ok(app) => app.run(|_app, _event| {
             #[cfg(windows)]
             if matches!(_event, tauri::RunEvent::Exit) {
+                desktop::shutdown(_app);
                 _app.state::<controller::SessionState>()
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())

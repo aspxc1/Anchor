@@ -28,3 +28,10 @@ npm run tauri dev
 2. Click **Return to Focus** with Notepad first visible, then minimized. Confirm Notepad returns to the foreground, the curtain hides, and Notepad's native **Save As** dialog is allowed.
 3. Open Task Manager during enforcement and confirm it stays usable. Close every allowed window, then switch to another application. Choose a replacement from the curtain and confirm the session continues.
 4. Start an emergency hold, release it early, then verify a new hold starts from zero. Try the typed challenge and the full ten-second hold in separate sessions. Both should open the dashboard and leave focus enforcement stopped.
+
+## Timer and Hall Pass acceptance check
+
+1. Start a custom 1-minute focus and 1-minute break with two passes. Compare phases and timers between the HUD and the dashboard opened from the tray.
+2. Activate a Hall Pass from the curtain and switch apps. Leave a blocked app in the foreground until the pass reaches zero. Confirm the curtain returns immediately and the focus clock resumes where it paused. Use the second pass from the HUD and end it early.
+3. During a break, switch freely and add a new window from the dashboard. Start the next focus sprint early. Verify the added window is now allowed, then end the session during the next break.
+4. Drag the HUD left and right. Confirm it stays at the top of the primary work area. Confirm **Quit** from the tray removes the HUD and ends enforcement.

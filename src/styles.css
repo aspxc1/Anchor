@@ -116,3 +116,27 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 @media (prefers-reduced-motion: reduce) {
   .hold-button.holding::before { opacity: .65; }
 }
+
+.field select { min-height: 39px; border: 1px solid #3a4549; border-radius: 8px; background: #131819; padding: 0 10px; font-weight: 400; }
+.session-settings .field:has(select), .session-settings .compact-field { flex: 0 1 auto; }
+.compact-field input { max-width: 86px; }
+.current-session { flex: 1; min-width: 140px; }
+.current-session p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.time-chip { display: inline-block; border-radius: 5px; padding: 2px 6px; color: var(--accent); background: #252e26; font-size: 12px; font-variant-numeric: tabular-nums; }
+.window-entry { display: flex; align-items: center; border-top: 1px solid var(--line); }
+.window-entry .window-row { flex: 1; min-width: 0; border: 0; }
+.window-entry .row-action { margin-right: 12px; }
+
+.hud { display: flex; width: 100%; height: 42px; align-items: center; gap: 6px; border: 1px solid #495653; border-radius: 21px; padding: 0 8px 0 6px; overflow: hidden; background: #151c1eee; color: #f2f4f4; }
+.hud-grip { display: grid; flex: none; width: 20px; height: 36px; place-items: center; color: #899693; cursor: ew-resize; touch-action: none; }
+.hud-phase { flex: none; color: var(--accent); font-size: 11px; font-weight: 700; }
+.hud-time { flex: none; font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; font-size: 15px; font-weight: 700; }
+.hud-goal { flex: 1; min-width: 0; padding-inline: 4px; overflow: hidden; color: #b4bebf; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.hud .icon-button { width: 25px; height: 26px; }
+.hud .icon-button:disabled { cursor: not-allowed; opacity: .45; }
+.hud .hud-ticket { display: flex; gap: 3px; width: auto; padding-inline: 2px; color: #e9ecec; font-size: 10px; font-weight: 700; }
+.hud-small-button { flex: none; border: 1px solid #785936; border-radius: 6px; padding: 3px 5px; color: #ffdb9e; font-size: 11px; }
+.hud-break { border-color: #4b765b; background: #1a2921ee; }
+.hud-pass { border-color: #ad7844; background: #3b2b1deb; animation: amber-pulse 2s ease-in-out infinite alternate; }
+.hud-pass .hud-phase, .hud-error { color: #ffce89; }
+@keyframes amber-pulse { to { border-color: #f8bb73; } }
