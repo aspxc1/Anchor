@@ -1,8 +1,9 @@
 pub(crate) mod capture;
+pub(crate) mod library;
 
 use crate::{
     policy::{self, Decision, WindowId},
-    storage::{Audio, Preferences, Storage},
+    storage::{history::BlockedRecord, Audio, Preferences, Storage},
     timing::{Phase, Timing},
     win32::{
         foreground,
@@ -29,6 +30,8 @@ pub struct BlockedSwitch {
 #[derive(Serialize, Clone)]
 pub struct Snapshot {
     revision: u64,
+    last_finished_session: Option<String>,
+    notes_revision: u64,
     capture_open: bool,
     preferences: Preferences,
     shortcut_error: Option<String>,
@@ -91,10 +94,13 @@ pub enum Action {
 
 pub type SessionState = Mutex<Controller>;
 
+#[derive(Default)]
 pub struct Controller {
     timing: Timing,
     storage: Option<Storage>,
     session_id: Option<String>,
+    last_finished_session: Option<String>,
+    notes_revision: u64,
     preferences: Preferences,
     shortcut_error: Option<String>,
     registered_hotkey: Option<tauri_plugin_global_shortcut::Shortcut>,
@@ -103,7 +109,8 @@ pub struct Controller {
     goal: String,
     allowed: Vec<OpenWindow>,
     last_allowed: Option<WindowId>,
-    blocked: Vec<BlockedSwitch>,
+    blocked_count: usize,
+    pending_switches: Vec<BlockedRecord>,
     violation: Option<BlockedSwitch>,
     challenge: Option<String>,
     hold_started: Option<Instant>,
@@ -113,37 +120,13 @@ pub struct Controller {
     revision: u64,
 }
 
-impl Default for Controller {
-    fn default() -> Self {
-        Self {
-            timing: Timing::default(),
-            storage: None,
-            session_id: None,
-            preferences: Preferences::default(),
-            shortcut_error: None,
-            registered_hotkey: None,
-            capture_open: false,
-            return_after_capture: None,
-            goal: String::new(),
-            allowed: Vec::new(),
-            last_allowed: None,
-            blocked: Vec::new(),
-            violation: None,
-            challenge: None,
-            hold_started: None,
-            error: None,
-            hook: None,
-            generation: 0,
-            revision: 0,
-        }
-    }
-}
-
 impl Controller {
     fn snapshot(&self) -> Snapshot {
         let now = Instant::now();
         Snapshot {
             revision: self.revision,
+            last_finished_session: self.last_finished_session.clone(),
+            notes_revision: self.notes_revision,
             capture_open: self.capture_open,
             preferences: self.preferences.clone(),
             shortcut_error: self.shortcut_error.clone(),
@@ -153,7 +136,7 @@ impl Controller {
             actual_focus_seconds: self.timing.actual_focus(now).as_secs(),
             allowed: self.allowed.clone(),
             goal: self.goal.clone(),
-            blocked_count: self.blocked.len(),
+            blocked_count: self.blocked_count,
             blocked: self.violation.clone(),
             needs_replacement: self.timing.phase == Phase::ActiveFocus
                 && self.focus_target().is_none(),
@@ -223,10 +206,11 @@ impl Controller {
             }
         }
         self.timing = Timing::new(focus_minutes, break_minutes, hall_passes, Instant::now());
+        self.last_finished_session = None;
         self.goal = goal;
         self.allowed = allowed;
         self.last_allowed = Some(first);
-        self.blocked.clear();
+        self.blocked_count = 0;
         self.violation = None;
         self.error = None;
         if let Err(error) = hud.show() {
@@ -317,7 +301,7 @@ impl Controller {
                     "Blocked switch at {:?} to {}",
                     blocked.occurred_at, blocked.process_name
                 );
-                self.blocked.push(blocked.clone());
+                self.record_blocked_switch(&blocked);
                 if foreground::current() == hwnd {
                     self.violation = Some(blocked);
                     if let Err(error) = show_curtain(app, hwnd) {
@@ -326,6 +310,34 @@ impl Controller {
                         self.finish(app, Phase::Aborted);
                     }
                 }
+            }
+        }
+    }
+
+    fn record_blocked_switch(&mut self, blocked: &BlockedSwitch) {
+        self.blocked_count += 1;
+        if let Some(session_id) = self.session_id.clone() {
+            self.pending_switches.push(BlockedRecord {
+                session_id,
+                occurred_at: chrono::DateTime::<chrono::Local>::from(blocked.occurred_at)
+                    .to_rfc3339(),
+                process_name: blocked.process_name.clone(),
+                window_title: blocked.window_title.clone(),
+            });
+            self.flush_switches();
+        }
+    }
+
+    fn flush_switches(&mut self) {
+        if self.pending_switches.is_empty() {
+            return;
+        }
+        if let Some(storage) = self.storage.as_mut() {
+            match storage.record_switches(&self.pending_switches) {
+                Ok(()) => self.pending_switches.clear(),
+                Err(error) => self.report_error(format!(
+                    "Could not record blocked switches in SQLite. Anchor will retry: {error}"
+                )),
             }
         }
     }
@@ -390,6 +402,11 @@ impl Controller {
     }
 
     fn finish(&mut self, app: &AppHandle, phase: Phase) {
+        self.complete_session(app, phase);
+        show_dashboard(app);
+    }
+
+    fn complete_session(&mut self, app: &AppHandle, phase: Phase) {
         let now = Instant::now();
         self.timing.stop(phase, now);
         self.hook.take();
@@ -400,6 +417,7 @@ impl Controller {
         hide(app, "braindump");
         hide(app, "curtain");
         hide(app, "hud");
+        self.flush_switches();
         if let Some(id) = self.session_id.take() {
             let result = (|| {
                 let apps =
@@ -418,13 +436,13 @@ impl Controller {
                     )
                     .map_err(|error| error.to_string())
             })();
-            if let Err(error) = result {
-                self.report_error(format!(
+            match result {
+                Ok(()) => self.last_finished_session = Some(id),
+                Err(error) => self.report_error(format!(
                     "The session ended, but Anchor could not update its database record: {error}"
-                ));
+                )),
             }
         }
-        show_dashboard(app);
     }
 
     fn apply(&mut self, app: &AppHandle, source: &str, action: Action) -> Result<(), String> {
@@ -625,7 +643,9 @@ impl Controller {
 
     pub fn before_quit(&mut self, app: &AppHandle) {
         if self.timing.phase.is_running() {
-            self.finish(app, Phase::Aborted);
+            self.complete_session(app, Phase::Aborted);
+        } else {
+            self.flush_switches();
         }
     }
 }
@@ -701,7 +721,13 @@ fn show_curtain(app: &AppHandle, target: isize) -> Result<(), String> {
     let hwnd = window
         .hwnd()
         .map_err(|error| format!("Could not access the curtain window: {error}"))?;
-    foreground::show_overlay(hwnd.0 as isize, target)
+    foreground::position_overlay(hwnd.0 as isize, target)?;
+    // Let Tauri track visibility so its later hide call updates the native window.
+    window
+        .show()
+        .map_err(|error| format!("Could not show the focus curtain: {error}"))?;
+    foreground::focus_overlay(hwnd.0 as isize);
+    Ok(())
 }
 
 fn hide(app: &AppHandle, label: &str) {

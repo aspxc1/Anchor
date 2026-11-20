@@ -122,6 +122,7 @@ impl Controller {
         if let Err(error) = storage.sync_markdown() {
             self.report_error(format!("The note is saved in SQLite. Anchor could not export it to Markdown and will retry: {error}"));
         }
+        self.notes_revision += 1;
         self.dismiss_capture(app);
         Ok(())
     }

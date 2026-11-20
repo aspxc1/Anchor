@@ -10,7 +10,7 @@ use windows::{
         UI::WindowsAndMessaging::{
             GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowThreadProcessId,
             IsIconic, IsWindow, SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER,
-            GW_OWNER, HWND_TOPMOST, SWP_SHOWWINDOW, SW_RESTORE,
+            GW_OWNER, HWND_TOPMOST, SWP_NOACTIVATE, SW_RESTORE,
         },
     },
 };
@@ -129,10 +129,10 @@ pub fn monitor_rect(raw: isize, work_area: bool) -> Result<RECT, String> {
     })
 }
 
-pub fn show_overlay(raw: isize, target: isize) -> Result<(), String> {
+pub fn position_overlay(raw: isize, target: isize) -> Result<(), String> {
     let rect = monitor_rect(target, false)?;
     let window = handle(raw);
-    // Position, resize, and show Anchor's own HWND in one call in physical pixels.
+    // Position Anchor's own HWND in physical pixels without changing visibility.
     unsafe {
         SetWindowPos(
             window,
@@ -141,12 +141,16 @@ pub fn show_overlay(raw: isize, target: isize) -> Result<(), String> {
             rect.top,
             rect.right - rect.left,
             rect.bottom - rect.top,
-            SWP_SHOWWINDOW,
+            SWP_NOACTIVATE,
         )
-        .map_err(|error| format!("Could not show the focus curtain: {error}"))?;
-        if !SetForegroundWindow(window).as_bool() {
-            eprintln!("Windows declined direct foreground activation for the curtain");
-        }
+        .map_err(|error| format!("Could not position the focus curtain: {error}"))?;
     }
     Ok(())
+}
+
+pub fn focus_overlay(raw: isize) {
+    // The HWND belongs to the visible Anchor curtain.
+    if !unsafe { SetForegroundWindow(handle(raw)) }.as_bool() {
+        eprintln!("Windows declined direct foreground activation for the curtain");
+    }
 }

@@ -1,6 +1,6 @@
 # Anchor
 
-Anchor is a Tauri desktop app for Windows 10 and Windows 11 x64. The current milestone lets you discover, search, refresh, and select open windows for a future focus session.
+Anchor is a Tauri desktop focus app for Windows 10 and Windows 11 x64. Choose the exact windows you need, set a goal, and work in Pomodoro sprints. Anchor allows selected windows and their dialogs, and keeps Brain Dumps and session history local.
 
 ## Development
 
@@ -43,3 +43,11 @@ npm run tauri dev
 3. Repeat with **Esc** and by clicking away. Confirm neither dismissal saves a note. Change the shortcut in **Settings**, retry capture, and restart Anchor to verify that the shortcut is retained.
 
 Anchor's daily Markdown files are generated from SQLite. An export that fails is queued for retry on the next capture or launch.
+
+## Session history acceptance check
+
+1. Block several switches to the same app, capture a note, then end the session during a break. Confirm the dashboard opens the session summary with actual focus time, Hall Pass usage, grouped blocked switches, and the captured note.
+2. Capture an unlinked note with no running session. In **Brain Dumps**, search for that note, copy it, open the Markdown folder, then delete it. Confirm it is removed from both the viewer and the daily Markdown file.
+3. Restart Anchor and reopen **History**. Confirm the completed session and streak persist. Repeat a session with Emergency Unlock and confirm its history status is **Aborted**.
+
+On Windows x64, build the installers with `npm run tauri build`. Local cross-target Rust checks and portable tests do not exercise desktop focus behavior, WebView2 audio, or installer startup.

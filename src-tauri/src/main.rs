@@ -63,7 +63,12 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_open_windows,
-            controller::session_command
+            controller::session_command,
+            controller::library::session_history,
+            controller::library::session_detail,
+            controller::library::list_notes,
+            controller::library::delete_note,
+            controller::library::open_markdown_folder,
         ]);
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![list_open_windows]);

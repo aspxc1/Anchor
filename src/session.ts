@@ -20,6 +20,8 @@ export interface Preferences {
 
 export interface Snapshot {
   revision: number;
+  last_finished_session: string | null;
+  notes_revision: number;
   capture_open: boolean;
   preferences: Preferences;
   shortcut_error: string | null;

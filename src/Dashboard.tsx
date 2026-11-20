@@ -1,12 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Anchor, Check, Layers2, Monitor, NotebookPen, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
+import { Anchor, Check, History, Layers2, Monitor, NotebookPen, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NotesLibrary, SessionHistory } from "./Library";
 import { prepareAudio, useAmbientAudio } from "./ambient";
 import { countdown, phaseName, useSession, type Audio } from "./session";
 import { filterWindows, retainSelection, type OpenWindow } from "./windowSelection";
 
 export function Dashboard() {
   const { snapshot, error: sessionError, act } = useSession();
+  const [page, setPage] = useState<"setup" | "history" | "notes">("setup");
+  const [sessionId, setSessionId] = useState<string>();
+  const [libraryRevision, setLibraryRevision] = useState(0);
+  const finishedId = snapshot?.last_finished_session;
+  const notesRevision = libraryRevision + (snapshot?.notes_revision ?? 0);
+  useEffect(() => {
+    if (finishedId) {
+      setSessionId(finishedId);
+      setPage("history");
+    }
+  }, [finishedId]);
+
   const audioError = useAmbientAudio(snapshot);
   const [audioWarmupError, setAudioWarmupError] = useState<string>();
   const [audio, setAudio] = useState<Audio>({ enabled: false, volume: 22, noise: "brown" });
@@ -98,11 +111,16 @@ export function Dashboard() {
           <span className="brand-mark"><Anchor size={19} aria-hidden="true" /></span>
           Anchor
         </div>
-        <div className="rail-item" aria-current="page">
-          <Layers2 size={16} aria-hidden="true" /> Session setup
-        </div>
+        <nav className="rail-nav" aria-label="Anchor">
+          <button className="rail-item" aria-current={page === "setup" ? "page" : undefined} onClick={() => setPage("setup")}><Layers2 size={16} /> Session setup</button>
+          <button className="rail-item" aria-current={page === "history" ? "page" : undefined} onClick={() => setPage("history")}><History size={16} /> History</button>
+          <button className="rail-item" aria-current={page === "notes" ? "page" : undefined} onClick={() => setPage("notes")}><NotebookPen size={16} /> Brain Dumps</button>
+        </nav>
       </aside>
       <main className="workspace">
+        {(sessionError || snapshot?.error) && <p className="action-error" role="alert">{sessionError || snapshot?.error}</p>}
+        {page === "history" ? <SessionHistory selected={sessionId} select={setSessionId} notesRevision={notesRevision} /> :
+          page === "notes" ? <NotesLibrary revision={notesRevision} onChange={() => setLibraryRevision((value) => value + 1)} capture={() => void act({ type: "open_capture" })} /> : <>
         <header className="page-header settings-heading">
           <div>
             <h1>Session setup</h1>
@@ -122,7 +140,6 @@ export function Dashboard() {
         )}
         {snapshot?.shortcut_error && <p className="action-error" role="alert">{snapshot.shortcut_error}</p>}
         {(audioError || audioWarmupError) && <p className="action-error" role="alert">{audioError || audioWarmupError}</p>}
-        {(sessionError || snapshot?.error) && <p className="action-error" role="alert">{sessionError || snapshot?.error}</p>}
         {running && snapshot ? (
           <section className="session-settings panel" aria-label="Current session">
             <div className="current-session">
@@ -242,6 +259,7 @@ export function Dashboard() {
             )}
           </section>
         </div>
+        </>}
       </main>
     </div>
   );

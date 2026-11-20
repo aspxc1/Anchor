@@ -1,3 +1,5 @@
+pub(crate) mod history;
+
 use chrono::{DateTime, Local, NaiveDate};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -214,12 +216,20 @@ impl Storage {
         let days = statement
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
+        let mut first_error = None;
         for day in days {
-            self.write_day(NaiveDate::parse_from_str(&day, "%Y-%m-%d")?)?;
-            self.connection
-                .execute("DELETE FROM pending_markdown_dates WHERE day = ?1", [day])?;
+            let result = (|| -> StoreResult<()> {
+                self.write_day(NaiveDate::parse_from_str(&day, "%Y-%m-%d")?)?;
+                self.connection
+                    .execute("DELETE FROM pending_markdown_dates WHERE day = ?1", [&day])?;
+                Ok(())
+            })();
+            if let Err(error) = result {
+                eprintln!("Could not sync Brain Dump Markdown for {day}: {error}");
+                first_error.get_or_insert(error);
+            }
         }
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     }
 
     fn write_day(&self, date: NaiveDate) -> StoreResult<()> {
