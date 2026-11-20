@@ -1,11 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { GripVertical, LayoutDashboard, LockKeyhole, NotebookPen, Play, Square, Ticket, TriangleAlert, Volume2, VolumeX } from "lucide-react";
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { countdown, errorText, phaseName, useSession } from "./session";
 
 export function Hud() {
   const { snapshot, error, act } = useSession();
   const [dragError, setDragError] = useState<string>();
+  const [warningVisible, setWarningVisible] = useState(false);
+  const warning = snapshot?.profile_warning;
+  const phase = snapshot?.phase;
+  useEffect(() => {
+    if (!warning || phase !== "ActiveFocus") return;
+    setWarningVisible(true);
+    const timer = setTimeout(() => setWarningVisible(false), 8000);
+    return () => { clearTimeout(timer); setWarningVisible(false); };
+  }, [warning, phase]);
   const pointer = useRef<number | null>(null);
   const frame = useRef<number | undefined>(undefined);
   const request = useRef(Promise.resolve());
@@ -55,7 +64,9 @@ export function Hud() {
       </div>
       <span className="hud-phase">{phaseName(snapshot.phase)}</span>
       <time className="hud-time">{countdown(snapshot.seconds_left)}</time>
-      <span className="hud-goal" title={snapshot.goal}>{snapshot.goal}</span>
+      {warningVisible && warning
+        ? <span className="hud-goal hud-error" role="status" title={warning}>Some profile apps are unavailable</span>
+        : <span className="hud-goal" title={snapshot.goal}>{snapshot.goal}</span>}
       {(error || dragError || snapshot.error) && <span className="hud-error" role="alert" title={error || dragError || snapshot.error || undefined}> <TriangleAlert size={15} /> </span>}
       {focus && snapshot.needs_replacement && <button className="icon-button" aria-label="Pick a replacement window" title="Pick a replacement window" onClick={() => void act({ type: "show_recovery" })}><TriangleAlert size={16} /></button>}
       {focus && <button className="icon-button hud-ticket" aria-label={`Use Hall Pass, ${snapshot.hall_passes_remaining} remaining`} title="Use 60s Hall Pass" disabled={snapshot.hall_passes_remaining === 0} onClick={() => void act({ type: "use_hall_pass" })}><Ticket size={15} /><span>{snapshot.hall_passes_remaining}</span></button>}

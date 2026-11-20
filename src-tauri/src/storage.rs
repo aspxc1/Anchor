@@ -86,6 +86,10 @@ impl Storage {
         })
     }
 
+    pub fn connection(&self) -> &Connection {
+        &self.connection
+    }
+
     pub fn recover_sessions(&self) -> StoreResult<()> {
         self.connection.execute(
             "UPDATE sessions SET ended_at = started_at WHERE ended_at IS NULL",

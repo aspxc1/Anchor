@@ -3,6 +3,7 @@ import { Anchor, Check, History, Layers2, Monitor, NotebookPen, PanelsTopLeft, R
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BridgeSettings } from "./BridgeSettings";
 import { DomainFields } from "./DomainFields";
+import { ProfileStrip, type ProfileDraft } from "./Profiles";
 import { NotesLibrary, SessionHistory } from "./Library";
 import { prepareAudio, useAmbientAudio } from "./ambient";
 import { countdown, phaseName, useSession, type Audio } from "./session";
@@ -34,6 +35,8 @@ export function Dashboard() {
   const [hallPasses, setHallPasses] = useState(3);
   const [domains, setDomains] = useState<string[]>([]);
   const [allowLocalhost, setAllowLocalhost] = useState(true);
+  const [breakDomains, setBreakDomains] = useState<string[]>([]);
+  const [breakLocalhost, setBreakLocalhost] = useState(true);
   const [goal, setGoal] = useState("");
   const [windows, setWindows] = useState<OpenWindow[]>([]);
   const [selection, setSelection] = useState<ReadonlyMap<number, number>>(new Map());
@@ -108,6 +111,34 @@ export function Dashboard() {
   const filtered = filterWindows(windows, search);
   const allowed = running && snapshot ? snapshot.allowed : windows.filter(({ hwnd }) => selection.has(hwnd));
 
+  const activeDomains = snapshot?.allowed_domains;
+  const activeLocalhost = snapshot?.allow_localhost_domains;
+  const activeDomainKey = JSON.stringify(activeDomains ?? []);
+  useEffect(() => {
+    setBreakDomains(JSON.parse(activeDomainKey) as string[]);
+    setBreakLocalhost(activeLocalhost ?? true);
+  }, [activeDomainKey, activeLocalhost, onBreak]);
+
+  const profileSetup: ProfileDraft = {
+    name: "",
+    color: "#c8f584",
+    default_goal: goal,
+    focus_minutes: focusMinutes,
+    break_minutes: breakMinutes,
+    hall_passes: hallPasses,
+    ambient_sound: audio.enabled ? audio.noise : "none",
+    ambient_volume: audio.volume / 100,
+    allowed_apps: allowed.map(({ hwnd, executable_path, process_name, title }) => ({
+      process_name,
+      executable_path: executable_path ?? "",
+      launch_if_closed: false,
+      title_hint: windows.some((other) => other.hwnd !== hwnd && other.process_name === process_name
+        && !allowed.some((selected) => selected.hwnd === other.hwnd)) ? title : null,
+    })),
+    allowed_domains: domains,
+    allow_localhost_domains: allowLocalhost,
+  };
+
   return (
     <div className="app-layout">
       <aside className="rail">
@@ -135,6 +166,8 @@ export function Dashboard() {
         {(snapshot?.phase === "Aborted" || snapshot?.phase === "Completed") && (
           <p className="session-notice" role="status">{snapshot.phase === "Aborted" ? "Session unlocked" : "Session complete"}. {countdown(snapshot.actual_focus_seconds)} focused · {snapshot.blocked_count} blocked switches.</p>
         )}
+        {!running && <ProfileStrip setup={profileSetup} disabled={running} onLaunch={warmAudio} />}
+        {snapshot?.profile_warning && <p className="session-notice" role="status">{snapshot.profile_warning}</p>}
         {settingsOpen && <BridgeSettings />}
         {settingsOpen && (
           <form className="session-settings panel" onSubmit={(event) => { event.preventDefault(); void act({ type: "change_hotkey", hotkey }); }}>
@@ -154,6 +187,10 @@ export function Dashboard() {
             {onBreak && <>
               <button className="primary-button" onClick={() => void act({ type: "next_sprint" })}>Start Next Focus Sprint</button>
               <button className="quiet-button" onClick={() => void act({ type: "end_session" })}>End Session</button>
+              <DomainFields domains={breakDomains} allowLocalhost={breakLocalhost} changeDomains={setBreakDomains} changeLocalhost={setBreakLocalhost} />
+              <button className="quiet-button" onClick={() => void act({
+                type: "update_domains", domains: breakDomains, allow_localhost: breakLocalhost,
+              })}>Apply website list</button>
             </>}
             {settingsOpen && <div className="audio-settings">
               <AudioFields audio={audio} change={setAudio} />

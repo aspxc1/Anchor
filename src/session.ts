@@ -22,6 +22,7 @@ export interface Snapshot {
   revision: number;
   last_finished_session: string | null;
   notes_revision: number;
+  profile_warning: string | null;
   capture_open: boolean;
   preferences: Preferences;
   shortcut_error: string | null;
@@ -43,6 +44,7 @@ export interface Snapshot {
 export type Action =
   | { type: "start"; goal: string; windows: WindowId[]; focus_minutes: number; break_minutes: number; hall_passes: number; audio: Audio; allowed_domains: string[]; allow_localhost_domains: boolean }
   | { type: "set_bridge_port"; port: number }
+  | { type: "update_domains"; domains: string[]; allow_localhost: boolean }
   | { type: "rotate_bridge_token" }
   | { type: "save_capture"; content: string }
   | { type: "change_hotkey"; hotkey: string }

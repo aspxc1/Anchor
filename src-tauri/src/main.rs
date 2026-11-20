@@ -9,6 +9,8 @@ mod desktop;
 #[cfg(windows)]
 mod policy;
 #[cfg(windows)]
+mod profiles;
+#[cfg(windows)]
 mod storage;
 #[cfg(windows)]
 mod timing;
@@ -69,6 +71,11 @@ fn main() {
             controller::session_command,
             controller::hud::hud_drag,
             bridge::bridge_settings,
+            profiles::ipc::list_profiles,
+            profiles::ipc::save_profile,
+            profiles::ipc::delete_profile,
+            profiles::ipc::pick_profile_app,
+            profiles::ipc::launch_profile,
             controller::library::session_history,
             controller::library::session_detail,
             controller::library::list_notes,

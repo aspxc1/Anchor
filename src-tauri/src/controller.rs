@@ -34,6 +34,7 @@ pub struct Snapshot {
     revision: u64,
     last_finished_session: Option<String>,
     notes_revision: u64,
+    profile_warning: Option<String>,
     capture_open: bool,
     preferences: Preferences,
     shortcut_error: Option<String>,
@@ -60,16 +61,16 @@ pub struct SelectedWindow {
 
 #[derive(Deserialize)]
 pub struct StartRequest {
-    goal: String,
-    windows: Vec<SelectedWindow>,
-    focus_minutes: u32,
-    break_minutes: u32,
-    hall_passes: u8,
-    audio: Audio,
+    pub(crate) goal: String,
+    pub(crate) windows: Vec<SelectedWindow>,
+    pub(crate) focus_minutes: u32,
+    pub(crate) break_minutes: u32,
+    pub(crate) hall_passes: u8,
+    pub(crate) audio: Audio,
     #[serde(default)]
-    allowed_domains: Vec<String>,
+    pub(crate) allowed_domains: Vec<String>,
     #[serde(default = "default_allow_localhost")]
-    allow_localhost_domains: bool,
+    pub(crate) allow_localhost_domains: bool,
 }
 
 fn default_allow_localhost() -> bool {
@@ -81,15 +82,29 @@ fn default_allow_localhost() -> bool {
 pub enum Action {
     Snapshot,
     Start(StartRequest),
-    SetBridgePort { port: u16 },
+    UpdateDomains {
+        domains: Vec<String>,
+        allow_localhost: bool,
+    },
+    SetBridgePort {
+        port: u16,
+    },
     RotateBridgeToken,
     OpenCapture,
     DismissCapture,
-    SaveCapture { content: String },
-    ChangeHotkey { hotkey: String },
-    ChangeAudio { audio: Audio },
+    SaveCapture {
+        content: String,
+    },
+    ChangeHotkey {
+        hotkey: String,
+    },
+    ChangeAudio {
+        audio: Audio,
+    },
     ToggleAudio,
-    AddWindow { window: SelectedWindow },
+    AddWindow {
+        window: SelectedWindow,
+    },
     UseHallPass,
     EndHallPass,
     NextSprint,
@@ -97,10 +112,14 @@ pub enum Action {
     ShowRecovery,
     ShowDashboard,
     ReturnToFocus,
-    ReplaceWindow { window: SelectedWindow },
+    ReplaceWindow {
+        window: SelectedWindow,
+    },
     OpenEmergency,
     CloseEmergency,
-    TypeChallenge { value: String },
+    TypeChallenge {
+        value: String,
+    },
     BeginHold,
     CancelHold,
     ConfirmHold,
@@ -111,6 +130,8 @@ pub type SessionState = Mutex<Controller>;
 #[derive(Default)]
 pub struct Controller {
     timing: Timing,
+    pub(crate) profile_launching: bool,
+    pub(crate) profile_warning: Option<String>,
     bridge: Option<crate::bridge::Bridge>,
     allowed_domains: Vec<String>,
     restrict_localhost: bool,
@@ -145,6 +166,7 @@ impl Controller {
             revision: self.revision,
             last_finished_session: self.last_finished_session.clone(),
             notes_revision: self.notes_revision,
+            profile_warning: self.profile_warning.clone(),
             capture_open: self.capture_open,
             preferences: self.preferences.clone(),
             shortcut_error: self.shortcut_error.clone(),
@@ -165,7 +187,7 @@ impl Controller {
         }
     }
 
-    fn publish(&mut self, app: &AppHandle) -> Snapshot {
+    pub(crate) fn publish(&mut self, app: &AppHandle) -> Snapshot {
         self.revision += 1;
         let snapshot = self.snapshot();
         if let Some(bridge) = &self.bridge {
@@ -177,10 +199,27 @@ impl Controller {
         snapshot
     }
 
-    fn start(&mut self, app: &AppHandle, request: StartRequest) -> Result<(), String> {
+    fn start(&mut self, app: &AppHandle, mut request: StartRequest) -> Result<(), String> {
+        if self.profile_launching || self.is_running() {
+            return Err("Finish the current session or profile launch first.".into());
+        }
+        let allowed = validate_selection(std::mem::take(&mut request.windows))?;
+        self.start_matched(app, request, allowed)
+    }
+
+    pub(crate) fn is_running(&self) -> bool {
+        self.timing.phase.is_running()
+    }
+
+    pub(crate) fn start_matched(
+        &mut self,
+        app: &AppHandle,
+        request: StartRequest,
+        allowed: Vec<OpenWindow>,
+    ) -> Result<(), String> {
         let StartRequest {
             goal,
-            windows,
+            windows: _,
             focus_minutes,
             break_minutes,
             hall_passes,
@@ -205,9 +244,11 @@ impl Controller {
             );
         }
         let allowed_domains = crate::bridge::validate_domains(allowed_domains)?;
-        let allowed = validate_selection(windows)?;
+        let first = allowed
+            .first()
+            .ok_or("Select at least one open window.")?
+            .id();
         let main = view(app, "main")?;
-        let first = allowed[0].id();
         let hud = view(app, "hud")?;
         hud::position(&hud, self.store()?)?;
         let mut preferences = self.preferences.clone();
@@ -233,6 +274,7 @@ impl Controller {
         }
         self.timing = Timing::new(focus_minutes, break_minutes, hall_passes, Instant::now());
         self.last_finished_session = None;
+        self.profile_warning = None;
         self.allowed_domains = allowed_domains;
         self.restrict_localhost = !allow_localhost_domains;
         self.goal = goal;
@@ -402,7 +444,7 @@ impl Controller {
         self.hold_started = None;
     }
 
-    fn store(&self) -> Result<&Storage, String> {
+    pub(crate) fn store(&self) -> Result<&Storage, String> {
         self.storage.as_ref().ok_or_else(|| {
             "Anchor storage is unavailable. Check %APPDATA%\\Anchor and restart.".into()
         })
@@ -481,6 +523,13 @@ impl Controller {
         }
         match action {
             Action::Snapshot => return Ok(()),
+            Action::UpdateDomains {
+                domains,
+                allow_localhost,
+            } if source == "main" && self.timing.phase == Phase::Break => {
+                self.allowed_domains = crate::bridge::validate_domains(domains)?;
+                self.restrict_localhost = !allow_localhost;
+            }
             Action::SetBridgePort { port } if source == "main" => {
                 self.set_bridge_port(app, port)?
             }

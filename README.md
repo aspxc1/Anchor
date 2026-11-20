@@ -58,3 +58,9 @@ On Windows x64, build the installers with `npm run tauri build`. Local cross-tar
 - Place monitors at different scaling factors, with one to the left of the primary screen. Trigger the curtain on both monitors and confirm there are no gaps or overflow.
 - Return to a maximized VS Code or browser window and confirm it stays maximized. Minimize it and repeat. Close the most recently allowed window to test fallback to a remaining one.
 - Confirm the Windows Store or another hosted UWP app displays its own executable instead of ApplicationFrameHost. Open Alt+Tab and taskbar previews, then switch to a blocked window to confirm enforcement still activates.
+
+## Study profiles acceptance check
+
+1. Select an open browser or editor, choose durations and ambient audio, and add both `docs.rs` and `*.mit.edu` to **Allowed websites**. Choose **Save Current Setup** in the profile strip and give it a name.
+2. In that profile editor, use the executable picker to add Notepad and set **Auto-launch if closed**. Close Notepad and click **1-Click Launch**. Verify it starts, both apps are allowed, and the connected extension immediately applies both domain rules.
+3. Try a missing executable while another profile window is open. Confirm Anchor starts with the available window and shows a warning. Reopen the profile editor to adjust its app paths or title hints.
