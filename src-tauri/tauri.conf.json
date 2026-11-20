@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Anchor",
+  "version": "0.1.0",
+  "identifier": "com.anchor.study",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "Anchor", "width": 1100, "height": 720, "minWidth": 900, "minHeight": 650, "center": true },
+      { "label": "hud", "title": "Anchor Session", "width": 420, "height": 42, "decorations": false, "transparent": true, "alwaysOnTop": true, "skipTaskbar": true, "resizable": false, "visible": false, "focus": false },
+      { "label": "curtain", "title": "Anchor Focus", "decorations": false, "alwaysOnTop": true, "skipTaskbar": true, "resizable": false, "visible": false, "focus": false },
+      { "label": "braindump", "title": "Anchor Brain Dump", "width": 520, "height": 90, "center": true, "decorations": false, "transparent": true, "alwaysOnTop": true, "skipTaskbar": true, "resizable": false, "visible": false, "focus": false }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self'; img-src 'self' data:"
+    }
+  },
+  "bundle": { "active": true, "targets": ["nsis", "msi"], "icon": ["icons/icon.ico"] }
+}
