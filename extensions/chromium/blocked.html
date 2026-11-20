@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Return to Focus · Anchor</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="blocked.js"></script>
+</head>
+<body class="blocked">
+  <main class="panel blocked-card">
+    <img width="46" height="46" src="icon-48.png" alt="Anchor">
+    <h1><span id="domain">This site</span> is outside your focus allowlist</h1>
+    <p id="goal" class="muted"></p>
+    <p id="countdown" class="countdown" hidden><time id="timer"></time> remaining</p>
+    <div class="actions">
+      <button class="primary" id="back">Go Back</button>
+      <button class="secondary" id="pass" disabled>Use 60s Hall Pass</button>
+    </div>
+    <p id="feedback" class="muted" role="status"></p>
+  </main>
+</body>
+</html>

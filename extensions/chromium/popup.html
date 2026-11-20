@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anchor Focus</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body class="popup">
+  <main class="panel">
+    <header class="identity">
+      <img width="31" height="31" src="icon-48.png" alt="">
+      <h1>Anchor</h1>
+      <span id="badge" class="badge" role="status">Checking…</span>
+    </header>
+    <section id="session" class="session" hidden>
+      <p id="phase"></p>
+      <time id="timer"></time>
+      <p id="goal"></p>
+    </section>
+    <p id="connection" class="muted">Checking the local Anchor bridge.</p>
+    <details id="settings">
+      <summary>Settings</summary>
+      <form id="pair">
+        <label>Local port<input id="port" type="number" min="1024" max="65535" required></label>
+        <label>Pairing token<input id="token" type="password" minlength="32" maxlength="32" pattern="[a-fA-F0-9]{32}" autocomplete="off" required></label>
+        <p class="muted">Find the port and token in Anchor’s desktop Settings.</p>
+        <button class="primary">Save connection</button>
+      </form>
+    </details>
+  </main>
+</body>
+</html>

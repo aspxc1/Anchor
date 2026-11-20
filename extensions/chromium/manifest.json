@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Anchor Focus",
+  "version": "2.0.0",
+  "description": "Use the allowed websites from your Anchor desktop focus session.",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabs", "webNavigation", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Anchor Focus", "default_popup": "popup.html", "default_icon": "icon-48.png" },
+  "icons": { "48": "icon-48.png", "128": "icon-128.png" }
+}
