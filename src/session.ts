@@ -28,6 +28,8 @@ export interface Snapshot {
   phase: "Idle" | "ActiveFocus" | "HallPass" | "Break" | "Completed" | "Aborted";
   seconds_left: number;
   hall_passes_remaining: number;
+  allowed_domains: string[];
+  allow_localhost_domains: boolean;
   actual_focus_seconds: number;
   allowed: OpenWindow[];
   goal: string;
@@ -39,7 +41,9 @@ export interface Snapshot {
 }
 
 export type Action =
-  | { type: "start"; goal: string; windows: WindowId[]; focus_minutes: number; break_minutes: number; hall_passes: number; audio: Audio }
+  | { type: "start"; goal: string; windows: WindowId[]; focus_minutes: number; break_minutes: number; hall_passes: number; audio: Audio; allowed_domains: string[]; allow_localhost_domains: boolean }
+  | { type: "set_bridge_port"; port: number }
+  | { type: "rotate_bridge_token" }
   | { type: "save_capture"; content: string }
   | { type: "change_hotkey"; hotkey: string }
   | { type: "change_audio"; audio: Audio }

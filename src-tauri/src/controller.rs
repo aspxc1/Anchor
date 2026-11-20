@@ -1,3 +1,4 @@
+mod browser;
 pub(crate) mod capture;
 pub(crate) mod hud;
 pub(crate) mod library;
@@ -39,6 +40,8 @@ pub struct Snapshot {
     phase: &'static str,
     seconds_left: u64,
     hall_passes_remaining: u8,
+    allowed_domains: Vec<String>,
+    allow_localhost_domains: bool,
     actual_focus_seconds: u64,
     allowed: Vec<OpenWindow>,
     goal: String,
@@ -63,6 +66,14 @@ pub struct StartRequest {
     break_minutes: u32,
     hall_passes: u8,
     audio: Audio,
+    #[serde(default)]
+    allowed_domains: Vec<String>,
+    #[serde(default = "default_allow_localhost")]
+    allow_localhost_domains: bool,
+}
+
+fn default_allow_localhost() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -70,6 +81,8 @@ pub struct StartRequest {
 pub enum Action {
     Snapshot,
     Start(StartRequest),
+    SetBridgePort { port: u16 },
+    RotateBridgeToken,
     OpenCapture,
     DismissCapture,
     SaveCapture { content: String },
@@ -98,6 +111,9 @@ pub type SessionState = Mutex<Controller>;
 #[derive(Default)]
 pub struct Controller {
     timing: Timing,
+    bridge: Option<crate::bridge::Bridge>,
+    allowed_domains: Vec<String>,
+    restrict_localhost: bool,
     hud_drag: Option<hud::Drag>,
     storage: Option<Storage>,
     session_id: Option<String>,
@@ -135,6 +151,8 @@ impl Controller {
             phase: self.timing.phase.name(),
             seconds_left: self.timing.seconds_left(now),
             hall_passes_remaining: self.timing.passes_remaining,
+            allowed_domains: self.allowed_domains.clone(),
+            allow_localhost_domains: !self.restrict_localhost,
             actual_focus_seconds: self.timing.actual_focus(now).as_secs(),
             allowed: self.allowed.clone(),
             goal: self.goal.clone(),
@@ -150,6 +168,9 @@ impl Controller {
     fn publish(&mut self, app: &AppHandle) -> Snapshot {
         self.revision += 1;
         let snapshot = self.snapshot();
+        if let Some(bridge) = &self.bridge {
+            bridge.publish(self.bridge_status());
+        }
         if let Err(error) = app.emit("session-state", &snapshot) {
             eprintln!("Could not broadcast session state: {error}");
         }
@@ -164,6 +185,8 @@ impl Controller {
             break_minutes,
             hall_passes,
             audio,
+            allowed_domains,
+            allow_localhost_domains,
         } = request;
         if self.timing.phase.is_running() {
             return Err("A focus session is already active.".into());
@@ -181,6 +204,7 @@ impl Controller {
                 "Choose 1–180 focus minutes, 1–60 break minutes, and up to 20 Hall Passes.".into(),
             );
         }
+        let allowed_domains = crate::bridge::validate_domains(allowed_domains)?;
         let allowed = validate_selection(windows)?;
         let main = view(app, "main")?;
         let first = allowed[0].id();
@@ -209,6 +233,8 @@ impl Controller {
         }
         self.timing = Timing::new(focus_minutes, break_minutes, hall_passes, Instant::now());
         self.last_finished_session = None;
+        self.allowed_domains = allowed_domains;
+        self.restrict_localhost = !allow_localhost_domains;
         self.goal = goal;
         self.allowed = allowed;
         self.last_allowed = Some(first);
@@ -323,6 +349,7 @@ impl Controller {
                 session_id,
                 occurred_at: chrono::DateTime::<chrono::Local>::from(blocked.occurred_at)
                     .to_rfc3339(),
+                source: crate::storage::history::BlockSource::Desktop,
                 process_name: blocked.process_name.clone(),
                 window_title: blocked.window_title.clone(),
             });
@@ -454,6 +481,10 @@ impl Controller {
         }
         match action {
             Action::Snapshot => return Ok(()),
+            Action::SetBridgePort { port } if source == "main" => {
+                self.set_bridge_port(app, port)?
+            }
+            Action::RotateBridgeToken if source == "main" => self.rotate_bridge_token()?,
             Action::OpenCapture if matches!(source, "main" | "hud") => self.show_capture(app)?,
             Action::DismissCapture if source == "braindump" => self.dismiss_capture(app),
             Action::SaveCapture { content } if source == "braindump" => {
@@ -500,13 +531,7 @@ impl Controller {
                 }
             }
             Action::UseHallPass if matches!(source, "hud" | "curtain") => {
-                if !self.timing.use_pass(Instant::now()) {
-                    return Err(
-                        "Hall Passes are available during focus with a pass remaining.".into(),
-                    );
-                }
-                self.hook.take();
-                self.dismiss_curtain(app);
+                self.use_hall_pass(app)?;
             }
             Action::EndHallPass if source == "hud" && self.timing.phase == Phase::HallPass => {
                 self.timing.resume(Instant::now());
@@ -590,6 +615,15 @@ impl Controller {
         self.publish(app);
     }
 
+    fn use_hall_pass(&mut self, app: &AppHandle) -> Result<(), String> {
+        if !self.timing.use_pass(Instant::now()) {
+            return Err("Hall Passes are available during focus with a pass remaining.".into());
+        }
+        self.hook.take();
+        self.dismiss_curtain(app);
+        Ok(())
+    }
+
     fn resume_enforcement(&mut self, app: &AppHandle, restore: bool) -> Result<(), String> {
         if let Err(error) = self.start_hook(app) {
             self.error = Some(error.clone());
@@ -645,6 +679,7 @@ impl Controller {
     }
 
     pub fn before_quit(&mut self, app: &AppHandle) {
+        self.bridge.take();
         if self.timing.phase.is_running() {
             self.complete_session(app, Phase::Aborted);
         } else {

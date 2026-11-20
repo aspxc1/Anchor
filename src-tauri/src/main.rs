@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(windows)]
+mod bridge;
+#[cfg(windows)]
 mod controller;
 #[cfg(windows)]
 mod desktop;
@@ -66,6 +68,7 @@ fn main() {
             list_open_windows,
             controller::session_command,
             controller::hud::hud_drag,
+            bridge::bridge_settings,
             controller::library::session_history,
             controller::library::session_detail,
             controller::library::list_notes,

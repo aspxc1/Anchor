@@ -53,7 +53,22 @@ pub struct SessionDetail {
     allowed: Vec<AllowedApp>,
 }
 
+pub enum BlockSource {
+    Desktop,
+    Browser,
+}
+
+impl BlockSource {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Desktop => "desktop",
+            Self::Browser => "browser",
+        }
+    }
+}
+
 pub struct BlockedRecord {
+    pub source: BlockSource,
     pub session_id: String,
     pub occurred_at: String,
     pub process_name: String,
@@ -75,15 +90,16 @@ impl Storage {
         let tx = self.connection.transaction()?;
         {
             let mut insert = tx.prepare_cached(
-                "INSERT INTO blocked_switches (session_id, occurred_at, process_name, window_title)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO blocked_switches (session_id, occurred_at, process_name, window_title, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
             )?;
             for switch in switches {
                 insert.execute(params![
                     switch.session_id,
                     switch.occurred_at,
                     switch.process_name,
-                    switch.window_title
+                    switch.window_title,
+                    switch.source.name(),
                 ])?;
             }
         }
@@ -237,6 +253,7 @@ mod tests {
         let now = Local::now();
         let time = now.to_rfc3339();
         let switches = ["edge.exe", "Edge.exe", "notepad.exe"].map(|name| BlockedRecord {
+            source: BlockSource::Desktop,
             session_id: id.clone(),
             occurred_at: time.clone(),
             process_name: name.into(),

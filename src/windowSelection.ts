@@ -2,6 +2,7 @@ export interface OpenWindow {
   hwnd: number;
   title: string;
   process_name: string;
+  executable_path?: string;
   pid: number;
 }
 

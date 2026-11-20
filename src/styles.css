@@ -206,3 +206,27 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   .history-layout { grid-template-columns: minmax(0, 1fr); }
   .settings-heading { flex-wrap: wrap; }
 }
+
+.domain-fields { display: grid; width: 100%; min-width: 0; gap: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px 10px; }
+.domain-fields legend { display: flex; align-items: center; gap: 7px; padding: 0 4px; font-size: 13px; font-weight: 650; }
+.domain-fields > p { color: var(--muted); font-size: 12px; }
+.domain-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.domain-tags li { display: flex; max-width: 100%; align-items: center; gap: 4px; border: 1px solid #425842; border-radius: 6px; padding: 3px 6px; background: #253126; color: var(--accent); font-size: 12px; }
+.domain-tags li span { min-width: 0; overflow-wrap: anywhere; }
+.domain-tags button { display: grid; flex: none; padding: 2px; place-items: center; }
+.domain-entry { display: flex; flex-wrap: wrap; gap: 7px; }
+.domain-entry .field { flex: 1 1 190px; }
+.domain-preset { padding-inline: 6px; }
+.desktop-settings { display: grid; gap: 12px; margin-bottom: 16px; padding: 16px 18px; }
+.desktop-settings form, .settings-intro, .settings-confirm { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.settings-intro { justify-content: space-between; align-items: start; }
+.settings-intro h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
+.desktop-settings p, .desktop-settings details { color: var(--muted); font-size: 12px; }
+.desktop-settings .field input { width: 90px; }
+.desktop-settings .session-notice, .desktop-settings .action-error { margin: 0; }
+.desktop-settings .action-error { color: #ffc3ae; }
+.desktop-settings summary { cursor: pointer; color: var(--accent); }
+.desktop-settings ol { margin: 8px 0 0 20px; list-style: decimal; }
+.desktop-settings ol li + li { margin-top: 4px; }
+.connection-label { align-self: start; border: 1px solid #4b4b42; border-radius: 99px; padding: 3px 8px; color: #e9d5a1; font-size: 11px; }
+.connection-label.connected { border-color: #456644; color: var(--accent); }

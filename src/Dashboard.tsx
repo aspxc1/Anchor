@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Anchor, Check, History, Layers2, Monitor, NotebookPen, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BridgeSettings } from "./BridgeSettings";
+import { DomainFields } from "./DomainFields";
 import { NotesLibrary, SessionHistory } from "./Library";
 import { prepareAudio, useAmbientAudio } from "./ambient";
 import { countdown, phaseName, useSession, type Audio } from "./session";
@@ -30,6 +32,8 @@ export function Dashboard() {
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [breakMinutes, setBreakMinutes] = useState(5);
   const [hallPasses, setHallPasses] = useState(3);
+  const [domains, setDomains] = useState<string[]>([]);
+  const [allowLocalhost, setAllowLocalhost] = useState(true);
   const [goal, setGoal] = useState("");
   const [windows, setWindows] = useState<OpenWindow[]>([]);
   const [selection, setSelection] = useState<ReadonlyMap<number, number>>(new Map());
@@ -131,6 +135,7 @@ export function Dashboard() {
         {(snapshot?.phase === "Aborted" || snapshot?.phase === "Completed") && (
           <p className="session-notice" role="status">{snapshot.phase === "Aborted" ? "Session unlocked" : "Session complete"}. {countdown(snapshot.actual_focus_seconds)} focused · {snapshot.blocked_count} blocked switches.</p>
         )}
+        {settingsOpen && <BridgeSettings />}
         {settingsOpen && (
           <form className="session-settings panel" onSubmit={(event) => { event.preventDefault(); void act({ type: "change_hotkey", hotkey }); }}>
             <label className="field"><span>Brain Dump shortcut</span><input value={hotkey} maxLength={80} required onChange={(event) => setHotkey(event.target.value)} /></label>
@@ -161,6 +166,7 @@ export function Dashboard() {
           void act({
             type: "start", goal, windows: allowed.map(({ hwnd, pid }) => ({ hwnd, pid })),
             focus_minutes: focusMinutes, break_minutes: breakMinutes, hall_passes: hallPasses, audio,
+            allowed_domains: domains, allow_localhost_domains: allowLocalhost,
           });
         }}>
           <label className="field">
@@ -185,6 +191,7 @@ export function Dashboard() {
             <label className="field compact-field"><span>Break (min)</span><input type="number" min={1} max={60} required value={breakMinutes || ""} onChange={(event) => setBreakMinutes(Number(event.target.value))} /></label>
           </>}
           <label className="field compact-field"><span>Hall Passes</span><input type="number" min={0} max={20} required value={hallPasses} onChange={(event) => setHallPasses(Number(event.target.value))} /></label>
+          <DomainFields domains={domains} allowLocalhost={allowLocalhost} changeDomains={setDomains} changeLocalhost={setAllowLocalhost} />
           <div className="audio-settings">
             <AudioFields audio={audio} change={setAudio} />
             <button className="primary-button" disabled={!goal.trim() || allowed.length === 0}>Start focus</button>
