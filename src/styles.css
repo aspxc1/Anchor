@@ -230,3 +230,5 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .desktop-settings ol li + li { margin-top: 4px; }
 .connection-label { align-self: start; border: 1px solid #4b4b42; border-radius: 99px; padding: 3px 8px; color: #e9d5a1; font-size: 11px; }
 .connection-label.connected { border-color: #456644; color: var(--accent); }
+
+.extension-folder { margin-top: 10px; }

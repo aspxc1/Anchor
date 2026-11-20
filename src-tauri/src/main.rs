@@ -54,6 +54,7 @@ fn main() {
     let builder = tauri::Builder::default().plugin(shortcuts.build());
     #[cfg(windows)]
     let builder = builder
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .manage(controller::SessionState::default())
         .setup(desktop::setup)
         .on_window_event(|window, event| {
@@ -71,6 +72,9 @@ fn main() {
             controller::session_command,
             controller::hud::hud_drag,
             bridge::bridge_settings,
+            bridge::open_extension_folder,
+            controller::autostart::read_autostart,
+            controller::autostart::set_autostart,
             profiles::ipc::list_profiles,
             profiles::ipc::save_profile,
             profiles::ipc::delete_profile,

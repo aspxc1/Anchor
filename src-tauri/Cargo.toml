@@ -1,6 +1,6 @@
 [package]
 name = "anchor"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
 
 [build-dependencies]
@@ -20,6 +20,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 
 [target.'cfg(windows)'.dependencies]
+tauri-plugin-autostart = "2"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",

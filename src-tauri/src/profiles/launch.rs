@@ -22,7 +22,7 @@ fn matching_windows<'a>(app: &ProfileApp, windows: &'a [OpenWindow]) -> Vec<&'a 
                 .eq_ignore_ascii_case(app.process_name.trim())
                 && hint
                     .as_ref()
-                    .map_or(true, |hint| window.title.to_lowercase().contains(hint))
+                    .is_none_or(|hint| window.title.to_lowercase().contains(hint))
                 && (desired.is_empty()
                     || window.executable_path.is_empty()
                     || path_matches(&desired, &window.executable_path))

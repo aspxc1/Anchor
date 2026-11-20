@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { CalendarDays, ChevronRight, Clipboard, Clock3, FolderOpen, History, NotebookPen, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { errorText } from "./session";
+import "./analytics.css";
 
 interface Summary {
   id: string;
@@ -27,11 +28,12 @@ interface HistoryData {
   sessions: Summary[];
   streak: number;
   total_focus_seconds: number;
+  focus_days: { date: string; focus_seconds: number }[];
 }
 
 interface Detail {
   summary: Summary;
-  blocked: { process_name: string; count: number }[];
+  blocked: { process_name: string; count: number; source: "desktop" | "browser" }[];
   notes: Note[];
   allowed: { title: string; process_name: string }[];
 }
@@ -76,6 +78,40 @@ function LoadStatus({ error, retry }: { error: string | undefined; retry: () => 
   ) : <p className="empty" role="status">Loading…</p>;
 }
 
+function FocusHeatmap({ days }: { days: HistoryData["focus_days"] }) {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  return (
+    <section className="panel focus-heatmap" aria-labelledby="focus-heatmap-title">
+      <div className="panel-header"><div><h2 id="focus-heatmap-title">Focus consistency</h2><p>Daily focus over the last 12 weeks</p></div></div>
+      <div className="heatmap-content">
+        <div className="heatmap-chart" aria-label="Focus time by day, arranged in 12 weeks from left to right">
+          <div className="heatmap-weekdays" aria-hidden="true">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="heatmap-grid">
+            {days.map(({ date, focus_seconds }) => {
+              const future = date > today;
+              const level = focus_seconds === 0 ? 0 : focus_seconds < 1800 ? 1 : focus_seconds < 3600 ? 2 : 3;
+              const minutes = Math.floor(focus_seconds / 60);
+              const seconds = focus_seconds % 60;
+              const label = future ? `${date}: future day` : `${date}: ${minutes} ${minutes === 1 ? "minute" : "minutes"}${seconds ? ` ${seconds} ${seconds === 1 ? "second" : "seconds"}` : ""} of focus`;
+              return <span key={date} className={`heatmap-day level-${level}${future ? " future" : ""}`} tabIndex={0} role="img" aria-label={label} title={label} />;
+            })}
+          </div>
+        </div>
+        <div className="heatmap-legend" aria-label="Focus time legend">
+          <span><i className="heatmap-day level-0" /> 0 min</span>
+          <span><i className="heatmap-day level-1" /> &lt;30 min</span>
+          <span><i className="heatmap-day level-2" /> 30–59 min</span>
+          <span><i className="heatmap-day level-3" /> 60+ min</span>
+          <span><i className="heatmap-day future" /> Future</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function SessionHistory({ selected, select, notesRevision }: {
   selected: string | undefined;
   select: (id: string) => void;
@@ -97,6 +133,7 @@ export function SessionHistory({ selected, select, notesRevision }: {
           <div className="panel metric"><CalendarDays size={17} /><span>Daily streak</span><strong>{data.streak} {data.streak === 1 ? "day" : "days"}</strong></div>
           <div className="panel metric"><History size={17} /><span>Sessions</span><strong>{data.sessions.length}</strong></div>
         </div>
+        <FocusHeatmap days={data.focus_days ?? []} />
         {data.sessions.length === 0 ? (
           <section className="panel empty">
             <History size={24} />
@@ -146,13 +183,13 @@ function SessionDetail({ id, revision }: { id: string; revision: number }) {
         <div><dt>Hall Passes used</dt><dd>{summary.hall_passes_used}</dd></div>
       </dl>
       {error && <p className="action-error" role="alert">{error} <button className="text-button" onClick={reload}>Retry</button></p>}
-      <h3>Blocked switches by app</h3>
+      <h3>Blocked switches by app or website</h3>
       {blocked.length > 0 ? (
         <ul className="bar-list">
-          {blocked.map(({ process_name, count }) => (
-            <li key={process_name}>
-              <span>{process_name}</span>
-              <meter aria-label={`Switches blocked for ${process_name}`} min={0} max={blocked[0]?.count ?? 1} value={count} />
+          {blocked.map(({ process_name, count, source }) => (
+            <li key={`${source}:${process_name}`}>
+              <span className="blocked-name"><span title={process_name}>{process_name}</span> <span className="source-badge">{source === "browser" ? "Website" : "Desktop app"}</span></span>
+              <meter aria-label={`Switches blocked for ${process_name} (${source === "browser" ? "website" : "desktop app"})`} min={0} max={blocked[0]?.count ?? 1} value={count} />
               <strong>{count}</strong>
             </li>
           ))}

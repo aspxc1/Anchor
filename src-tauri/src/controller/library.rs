@@ -72,12 +72,16 @@ pub fn open_markdown_folder(
         let session = state.lock().unwrap_or_else(|error| error.into_inner());
         session.store()?.markdown_folder().to_owned()
     };
+    open_folder(&folder).map_err(|error| report("open the Markdown folder in Explorer", error))
+}
+
+pub(crate) fn open_folder(folder: &std::path::Path) -> Result<(), String> {
     let windows =
         std::env::var_os("WINDIR").ok_or("Windows did not report its installation folder.")?;
     std::process::Command::new(std::path::PathBuf::from(windows).join("explorer.exe"))
         .arg(folder)
         .spawn()
-        .map_err(|error| report("open the Markdown folder in Explorer", error))?;
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

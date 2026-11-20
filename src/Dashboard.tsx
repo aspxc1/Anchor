@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Anchor, Check, History, Layers2, Monitor, NotebookPen, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AutostartSettings } from "./AutostartSettings";
 import { BridgeSettings } from "./BridgeSettings";
 import { DomainFields } from "./DomainFields";
 import { ProfileStrip, type ProfileDraft } from "./Profiles";
@@ -168,7 +169,7 @@ export function Dashboard() {
         )}
         {!running && <ProfileStrip setup={profileSetup} disabled={running} onLaunch={warmAudio} />}
         {snapshot?.profile_warning && <p className="session-notice" role="status">{snapshot.profile_warning}</p>}
-        {settingsOpen && <BridgeSettings />}
+        {settingsOpen && <><BridgeSettings /><AutostartSettings /></>}
         {settingsOpen && (
           <form className="session-settings panel" onSubmit={(event) => { event.preventDefault(); void act({ type: "change_hotkey", hotkey }); }}>
             <label className="field"><span>Brain Dump shortcut</span><input value={hotkey} maxLength={80} required onChange={(event) => setHotkey(event.target.value)} /></label>

@@ -1,3 +1,4 @@
+pub(crate) mod autostart;
 mod browser;
 pub(crate) mod capture;
 pub(crate) mod hud;

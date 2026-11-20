@@ -138,6 +138,30 @@ pub fn bridge_settings(window: WebviewWindow) -> Result<Settings, String> {
     session.browser_bridge_settings()
 }
 
+#[tauri::command]
+pub fn open_extension_folder(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Open Dashboard Settings to find the browser extension.".into());
+    }
+    let path = window
+        .path()
+        .resolve("extensions/chromium", tauri::path::BaseDirectory::Resource)
+        .map_err(|error| format!("Could not locate the bundled extension: {error}"))?;
+    #[cfg(debug_assertions)]
+    let path = if path.is_dir() {
+        path
+    } else {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../extensions/chromium")
+    };
+    if !path.join("manifest.json").is_file() {
+        return Err("Anchor could not find its unpacked extension folder.".into());
+    }
+    crate::controller::library::open_folder(&path).map_err(|error| {
+        eprintln!("Could not open the unpacked extension folder: {error}");
+        format!("Could not open the unpacked extension folder: {error}")
+    })
+}
+
 pub fn invalid(error: impl std::fmt::Display) -> ApiError {
     eprintln!("Rejected a localhost bridge request: {error}");
     ApiError::Invalid

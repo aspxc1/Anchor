@@ -1,8 +1,12 @@
 use super::{Storage, StoreResult};
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Days, Local, NaiveDate};
 use rusqlite::{params, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, io, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    path::Path,
+};
 
 #[derive(Serialize)]
 pub struct SessionSummary {
@@ -23,10 +27,18 @@ pub struct History {
     sessions: Vec<SessionSummary>,
     streak: u32,
     total_focus_seconds: i64,
+    focus_days: Vec<FocusDay>,
+}
+
+#[derive(Serialize)]
+struct FocusDay {
+    date: String,
+    focus_seconds: i64,
 }
 
 #[derive(Serialize)]
 pub struct BlockedApp {
+    source: String,
     process_name: String,
     count: u32,
 }
@@ -113,23 +125,24 @@ impl Storage {
         let sessions = query
             .query_map([], summary)?
             .collect::<Result<Vec<_>, _>>()?;
-        let days = sessions
-            .iter()
-            .filter(|session| session.status == "completed")
-            .map(|session| {
-                chrono::DateTime::parse_from_rfc3339(&session.ended_at)
-                    .map(|ended_at| ended_at.date_naive())
-            })
-            .collect::<Result<HashSet<_>, _>>()?;
-        let streak = current_streak(&days, Local::now().date_naive());
-        let total_focus_seconds = sessions
-            .iter()
-            .map(|session| session.actual_focus_seconds)
-            .sum();
+        let today = Local::now().date_naive();
+        let mut completed_days = HashSet::new();
+        let mut seconds_by_day = HashMap::new();
+        let mut total_focus_seconds = 0_i64;
+        for session in &sessions {
+            let day = chrono::DateTime::parse_from_rfc3339(&session.ended_at)?.date_naive();
+            if session.status == "completed" {
+                completed_days.insert(day);
+            }
+            let seconds = session.actual_focus_seconds.max(0);
+            *seconds_by_day.entry(day).or_insert(0) += seconds;
+            total_focus_seconds += seconds;
+        }
         Ok(History {
             sessions,
-            streak,
+            streak: current_streak(&completed_days, today),
             total_focus_seconds,
+            focus_days: focus_days(today, &seconds_by_day),
         })
     }
 
@@ -141,15 +154,16 @@ impl Storage {
             .optional()?
             .ok_or_else(|| io::Error::other("This session is unavailable in history."))?;
         let mut query = self.connection.prepare(
-            "SELECT min(process_name), count(*) FROM blocked_switches
-             WHERE session_id = ?1 GROUP BY process_name COLLATE NOCASE
-             ORDER BY count(*) DESC, min(process_name) COLLATE NOCASE",
+            "SELECT source, min(process_name), count(*) FROM blocked_switches
+             WHERE session_id = ?1 GROUP BY source, process_name COLLATE NOCASE
+             ORDER BY count(*) DESC, min(process_name) COLLATE NOCASE, source",
         )?;
         let blocked = query
             .query_map([id], |row| {
                 Ok(BlockedApp {
-                    process_name: row.get(0)?,
-                    count: row.get(1)?,
+                    source: row.get(0)?,
+                    process_name: row.get(1)?,
+                    count: row.get(2)?,
                 })
             })?
             .collect::<Result<_, _>>()?;
@@ -225,6 +239,24 @@ fn summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
     })
 }
 
+fn focus_days(today: NaiveDate, seconds: &HashMap<NaiveDate, i64>) -> Vec<FocusDay> {
+    let monday = today - Days::new(u64::from(today.weekday().num_days_from_monday()) + 11 * 7);
+    (0..84)
+        .map(|offset| {
+            let date = monday + Days::new(offset);
+            let focus_seconds = if date > today {
+                0
+            } else {
+                seconds.get(&date).copied().unwrap_or(0)
+            };
+            FocusDay {
+                date: date.to_string(),
+                focus_seconds,
+            }
+        })
+        .collect()
+}
+
 fn current_streak(days: &HashSet<NaiveDate>, today: NaiveDate) -> u32 {
     let mut date = if days.contains(&today) {
         Some(today)
@@ -260,6 +292,15 @@ mod tests {
             window_title: "Test".into(),
         });
         storage.record_switches(&switches).unwrap();
+        storage
+            .record_switches(&[BlockedRecord {
+                source: BlockSource::Browser,
+                session_id: id.clone(),
+                occurred_at: time,
+                process_name: "edge.exe".into(),
+                window_title: "Website".into(),
+            }])
+            .unwrap();
         storage.save_note(Some(&id), "Page 2", now).unwrap();
         storage.sync_markdown().unwrap();
         assert!(storage.history().unwrap().sessions.is_empty());
@@ -270,8 +311,21 @@ mod tests {
         assert_eq!(history.streak, 1);
         assert_eq!(history.total_focus_seconds, 1500);
         let detail = storage.session_detail(&id).unwrap();
-        assert_eq!(detail.summary.blocked_count, 3);
+        assert_eq!(detail.summary.blocked_count, 4);
         assert_eq!(detail.blocked[0].count, 2);
+        assert_eq!(detail.blocked[0].source, "desktop");
+        assert!(detail
+            .blocked
+            .iter()
+            .any(|app| app.source == "browser" && app.count == 1));
+        assert_eq!(
+            history
+                .focus_days
+                .iter()
+                .map(|day| day.focus_seconds)
+                .sum::<i64>(),
+            1500
+        );
         assert_eq!(detail.notes.len(), 1);
         storage.delete_note(detail.notes[0].id).unwrap();
         storage.sync_markdown().unwrap();
@@ -282,5 +336,23 @@ mod tests {
         assert_eq!(fs::read_to_string(file).unwrap(), "");
         drop(storage);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn focus_calendar_is_twelve_complete_display_weeks() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        let days = focus_days(today, &HashMap::from([(today, 123)]));
+        assert_eq!(days.len(), 84);
+        assert_eq!(
+            days[0].date.parse::<NaiveDate>().unwrap().weekday(),
+            chrono::Weekday::Mon
+        );
+        assert_eq!(
+            days[83].date.parse::<NaiveDate>().unwrap().weekday(),
+            chrono::Weekday::Sun
+        );
+        assert_eq!(days[81].date, today.to_string());
+        assert_eq!(days[81].focus_seconds, 123);
+        assert_eq!(days[82].focus_seconds, 0);
     }
 }

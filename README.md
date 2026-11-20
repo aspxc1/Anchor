@@ -64,3 +64,22 @@ On Windows x64, build the installers with `npm run tauri build`. Local cross-tar
 1. Select an open browser or editor, choose durations and ambient audio, and add both `docs.rs` and `*.mit.edu` to **Allowed websites**. Choose **Save Current Setup** in the profile strip and give it a name.
 2. In that profile editor, use the executable picker to add Notepad and set **Auto-launch if closed**. Close Notepad and click **1-Click Launch**. Verify it starts, both apps are allowed, and the connected extension immediately applies both domain rules.
 3. Try a missing executable while another profile window is open. Confirm Anchor starts with the available window and shows a warning. Reopen the profile editor to adjust its app paths or title hints.
+
+## Anchor V2
+
+Anchor keeps the same database and installer identity. Existing V1 sessions, distractions, notes, and preferences are migrated in place to schema version 2.
+
+- Pair Chrome, Edge, or Brave from the **Browser bridge** panel in Settings. **Open extension folder** opens the unpacked extension supplied with the installer. See [the extension setup guide](extensions/chromium/README.md).
+- Use **Start Anchor with Windows** in Settings to enable or disable launch at sign-in.
+- Open **History** to see focus activity for the last 12 weeks. Finish a session with a blocked app and a blocked website and confirm both sources appear separately in its summary.
+- To check installer upgrades, install V2 over V1 on the same Windows account. Open History and Brain Dumps to verify existing data. Enable startup and sign out and back in to verify Anchor launches.
+
+On a Windows x64 machine with the development prerequisites installed:
+
+```powershell
+npm ci
+npm test
+npx tsc --noEmit
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri build
+```

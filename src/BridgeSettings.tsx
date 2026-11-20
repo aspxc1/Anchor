@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Clipboard, Link2 } from "lucide-react";
+import { Clipboard, FolderOpen, Link2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { errorText, send, type Action } from "./session";
 
@@ -94,6 +94,9 @@ export function BridgeSettings() {
           <li>Turn on Developer mode, choose <strong>Load unpacked</strong>, and select the <code>extensions/chromium</code> folder.</li>
           <li>Open the Anchor extension and paste your pairing token and local port into its settings.</li>
         </ol>
+        <button type="button" className="quiet-button extension-folder" onClick={() => {
+          void invoke("open_extension_folder").catch((reason) => setError(errorText(reason)));
+        }}><FolderOpen size={15} /> Open extension folder</button>
       </details>
     </section>
   );
