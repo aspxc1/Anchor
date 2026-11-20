@@ -1,4 +1,5 @@
 pub(crate) mod capture;
+pub(crate) mod hud;
 pub(crate) mod library;
 
 use crate::{
@@ -97,6 +98,7 @@ pub type SessionState = Mutex<Controller>;
 #[derive(Default)]
 pub struct Controller {
     timing: Timing,
+    hud_drag: Option<hud::Drag>,
     storage: Option<Storage>,
     session_id: Option<String>,
     last_finished_session: Option<String>,
@@ -183,7 +185,7 @@ impl Controller {
         let main = view(app, "main")?;
         let first = allowed[0].id();
         let hud = view(app, "hud")?;
-        position_hud(&hud)?;
+        hud::position(&hud, self.store()?)?;
         let mut preferences = self.preferences.clone();
         preferences.focus_minutes = focus_minutes;
         preferences.break_minutes = break_minutes;
@@ -412,6 +414,7 @@ impl Controller {
         self.hook.take();
         self.close_emergency();
         self.violation = None;
+        self.hud_drag = None;
         self.capture_open = false;
         self.return_after_capture = None;
         hide(app, "braindump");
@@ -698,34 +701,22 @@ pub fn show_dashboard(app: &AppHandle) {
     }
 }
 
-fn position_hud(hud: &WebviewWindow) -> Result<(), String> {
-    let monitor = hud
-        .primary_monitor()
-        .map_err(|error| format!("Could not locate the primary monitor: {error}"))?
-        .ok_or("Windows did not report a primary monitor.")?;
-    let width = hud
-        .outer_size()
-        .map_err(|error| format!("Could not measure the HUD: {error}"))?
-        .width as i32;
-    let area = monitor.work_area();
-    let position = tauri::PhysicalPosition::new(
-        area.position.x + (area.size.width as i32 - width).max(0) / 2,
-        area.position.y + (10.0 * monitor.scale_factor()).round() as i32,
-    );
-    hud.set_position(position)
-        .map_err(|error| format!("Could not move the HUD: {error}"))
-}
-
 fn show_curtain(app: &AppHandle, target: isize) -> Result<(), String> {
     let window = view(app, "curtain")?;
     let hwnd = window
         .hwnd()
         .map_err(|error| format!("Could not access the curtain window: {error}"))?;
+    if !window
+        .is_visible()
+        .map_err(|error| format!("Could not inspect the curtain: {error}"))?
+    {
+        foreground::position_overlay(hwnd.0 as isize, target)?;
+        // Let Tauri track visibility so its later hide call updates the native window.
+        window
+            .show()
+            .map_err(|error| format!("Could not show the focus curtain: {error}"))?;
+    }
     foreground::position_overlay(hwnd.0 as isize, target)?;
-    // Let Tauri track visibility so its later hide call updates the native window.
-    window
-        .show()
-        .map_err(|error| format!("Could not show the focus curtain: {error}"))?;
     foreground::focus_overlay(hwnd.0 as isize);
     Ok(())
 }

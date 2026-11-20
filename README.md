@@ -34,7 +34,7 @@ npm run tauri dev
 1. Start a custom 1-minute focus and 1-minute break with two passes. Compare phases and timers between the HUD and the dashboard opened from the tray.
 2. Activate a Hall Pass from the curtain and switch apps. Leave a blocked app in the foreground until the pass reaches zero. Confirm the curtain returns immediately and the focus clock resumes where it paused. Use the second pass from the HUD and end it early.
 3. During a break, switch freely and add a new window from the dashboard. Start the next focus sprint early. Verify the added window is now allowed, then end the session during the next break.
-4. Drag the HUD left and right. Confirm it stays at the top of the primary work area. Confirm **Quit** from the tray removes the HUD and ends enforcement.
+4. Drag the HUD to a second monitor. Confirm it snaps to the top of that work area, then restart Anchor and verify that the placement survives. Confirm **Quit** from the tray removes the HUD and ends enforcement.
 
 ## Brain Dump and audio acceptance check
 
@@ -51,3 +51,10 @@ Anchor's daily Markdown files are generated from SQLite. An export that fails is
 3. Restart Anchor and reopen **History**. Confirm the completed session and streak persist. Repeat a session with Emergency Unlock and confirm its history status is **Aborted**.
 
 On Windows x64, build the installers with `npm run tauri build`. Local cross-target Rust checks and portable tests do not exercise desktop focus behavior, WebView2 audio, or installer startup.
+
+
+## Mixed-DPI Windows acceptance check
+
+- Place monitors at different scaling factors, with one to the left of the primary screen. Trigger the curtain on both monitors and confirm there are no gaps or overflow.
+- Return to a maximized VS Code or browser window and confirm it stays maximized. Minimize it and repeat. Close the most recently allowed window to test fallback to a remaining one.
+- Confirm the Windows Store or another hosted UWP app displays its own executable instead of ApplicationFrameHost. Open Alt+Tab and taskbar previews, then switch to a blocked window to confirm enforcement still activates.

@@ -20,6 +20,7 @@ struct OpenWindow {
     hwnd: isize,
     title: String,
     process_name: String,
+    executable_path: String,
     pid: u32,
 }
 
@@ -64,6 +65,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_open_windows,
             controller::session_command,
+            controller::hud::hud_drag,
             controller::library::session_history,
             controller::library::session_detail,
             controller::library::list_notes,

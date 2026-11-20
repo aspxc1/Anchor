@@ -1,57 +1,45 @@
-import { getCurrentWindow, PhysicalPosition, primaryMonitor } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { GripVertical, LayoutDashboard, LockKeyhole, NotebookPen, Play, Square, Ticket, TriangleAlert, Volume2, VolumeX } from "lucide-react";
 import { useRef, useState, type PointerEvent } from "react";
 import { countdown, errorText, phaseName, useSession } from "./session";
 
-interface Drag {
-  start: number;
-  position: PhysicalPosition;
-  min: number;
-  max: number;
-  scale: number;
-}
-
 export function Hud() {
   const { snapshot, error, act } = useSession();
   const [dragError, setDragError] = useState<string>();
-  const drag = useRef<Drag | null>(null);
   const pointer = useRef<number | null>(null);
   const frame = useRef<number | undefined>(undefined);
+  const request = useRef(Promise.resolve());
 
-  async function beginDrag(event: PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    const { screenX, pointerId } = event;
-    event.currentTarget.setPointerCapture(pointerId);
-    pointer.current = pointerId;
+  function drag(action: "begin" | "move" | "end" | "cancel") {
+    request.current = request.current
+      .then(() => invoke<void>("hud_drag", { action }))
+      .catch((reason) => setDragError(errorText(reason)));
+    return request.current;
+  }
+
+  function beginDrag(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || pointer.current !== null) return;
+    pointer.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
     setDragError(undefined);
-    const window = getCurrentWindow();
-    try {
-      const [position, size, monitor] = await Promise.all([window.outerPosition(), window.outerSize(), primaryMonitor()]);
-      if (!monitor) throw new Error("Windows did not report the primary monitor.");
-      if (pointer.current !== pointerId) return;
-      const min = monitor.workArea.position.x;
-      drag.current = { start: screenX, position, min, max: Math.max(min, min + monitor.workArea.size.width - size.width), scale: monitor.scaleFactor };
-    } catch (reason) {
-      setDragError(errorText(reason));
-    }
+    void drag("begin");
   }
 
   function move(event: PointerEvent<HTMLDivElement>) {
-    const active = drag.current;
-    if (!active || pointer.current !== event.pointerId) return;
-    const delta = Math.round((event.screenX - active.start) * active.scale);
-    const x = Math.min(active.max, Math.max(active.min, active.position.x + delta));
-    if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+    if (pointer.current !== event.pointerId || frame.current !== undefined) return;
     frame.current = requestAnimationFrame(() => {
-      frame.current = undefined;
-      void getCurrentWindow().setPosition(new PhysicalPosition(x, active.position.y))
-        .catch((reason) => setDragError(errorText(reason)));
+      void drag("move").finally(() => { frame.current = undefined; });
     });
   }
 
-  function endDrag() {
+  function endDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
+    if (pointer.current !== event.pointerId) return;
     pointer.current = null;
-    drag.current = null;
+    if (frame.current !== undefined) {
+      cancelAnimationFrame(frame.current);
+      frame.current = undefined;
+    }
+    void drag(cancelled ? "cancel" : "end");
   }
 
   if (!snapshot) return error && <div className="hud" role="alert">{error}</div>;
@@ -61,8 +49,8 @@ export function Hud() {
   return (
     <main className={`hud ${pass ? "hud-pass" : onBreak ? "hud-break" : ""}`}>
       <div className="hud-grip" title="Move HUD horizontally"
-        onPointerDown={(event) => void beginDrag(event)} onPointerMove={move}
-        onPointerUp={endDrag} onLostPointerCapture={endDrag} onPointerCancel={endDrag}>
+        onPointerDown={beginDrag} onPointerMove={move}
+        onPointerUp={endDrag} onLostPointerCapture={(event) => endDrag(event, true)} onPointerCancel={(event) => endDrag(event, true)}>
         <GripVertical size={16} aria-hidden="true" />
       </div>
       <span className="hud-phase">{phaseName(snapshot.phase)}</span>

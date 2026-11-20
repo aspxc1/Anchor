@@ -10,8 +10,9 @@ use windows::{
             PROCESS_QUERY_LIMITED_INFORMATION,
         },
         UI::WindowsAndMessaging::{
-            EnumWindows, GetWindowLongW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-            GetWindowThreadProcessId, IsWindowVisible, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
+            EnumChildWindows, EnumWindows, GetClassNameW, GetWindowLongW, GetWindowRect,
+            GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+            GWL_EXSTYLE, WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -94,14 +95,21 @@ fn inspect_window(hwnd: HWND) -> Result<Option<OpenWindow>> {
             return Ok(None);
         }
 
-        let process_name = executable_name(pid).unwrap_or_else(|error| {
-            eprintln!("Could not read the executable for process {pid}: {error}");
-            format!("Process {pid}")
+        let display_pid = app_frame_child_pid(hwnd, pid).unwrap_or(pid);
+        let executable_path = executable_path(display_pid).unwrap_or_else(|error| {
+            eprintln!("Could not read the executable for process {display_pid}: {error}");
+            String::new()
         });
+        let process_name = if executable_path.is_empty() {
+            format!("Process {display_pid}")
+        } else {
+            name_from_path(&executable_path)
+        };
         Ok(Some(OpenWindow {
             hwnd: hwnd.0 as isize,
             title,
             process_name,
+            executable_path,
             pid,
         }))
     }
@@ -129,10 +137,60 @@ pub(super) fn window_title(hwnd: HWND) -> Result<String> {
     }
 }
 
+// ApplicationFrameHost owns the top-level HWND, while the CoreWindow child belongs
+// to the app. Keep the frame identity for policy decisions, using the child only for display.
+pub(super) fn app_frame_child_pid(hwnd: HWND, pid: u32) -> Option<u32> {
+    let name = executable_name(pid)
+        .map_err(|error| {
+            eprintln!("Could not query process {pid} for a hosted window: {error}");
+        })
+        .ok()?;
+    if !name.eq_ignore_ascii_case("ApplicationFrameHost.exe") {
+        return None;
+    }
+    let mut child_pid = 0u32;
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(hwnd),
+            Some(find_core_window),
+            LPARAM((&mut child_pid as *mut u32) as isize),
+        );
+    }
+    (child_pid != 0 && child_pid != pid).then_some(child_pid)
+}
+
+unsafe extern "system" fn find_core_window(hwnd: HWND, context: LPARAM) -> BOOL {
+    let mut class = [0u16; 256];
+    let len = unsafe { GetClassNameW(hwnd, &mut class) } as usize;
+    if String::from_utf16_lossy(&class[..len]) == "Windows.UI.Core.CoreWindow" {
+        let mut pid = 0;
+        if unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) } != 0 && pid != 0 {
+            unsafe { *(context.0 as *mut u32) = pid };
+            return false.into();
+        }
+        eprintln!(
+            "Could not identify CoreWindow process: {}",
+            Error::from_thread()
+        );
+    }
+    true.into()
+}
+
+fn name_from_path(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(path)
+        .to_owned()
+}
+
 pub(super) fn executable_name(pid: u32) -> Result<String> {
+    executable_path(pid).map(|path| name_from_path(&path))
+}
+
+pub(super) fn executable_path(pid: u32) -> Result<String> {
     let mut buffer = vec![0u16; 32_768];
     let mut length = buffer.len() as u32;
-    // The buffer and its length match. Close the owned handle on both query outcomes.
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)?;
         let result = QueryFullProcessImageNameW(
@@ -146,10 +204,5 @@ pub(super) fn executable_name(pid: u32) -> Result<String> {
         }
         result?;
     }
-    let path = String::from_utf16_lossy(&buffer[..length as usize]);
-    Ok(Path::new(&path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(&path)
-        .to_owned())
+    Ok(String::from_utf16_lossy(&buffer[..length as usize]))
 }

@@ -1,4 +1,4 @@
-use super::discovery::{executable_name, window_title};
+use super::discovery::{app_frame_child_pid, executable_name, window_title};
 use crate::policy::WindowId;
 use windows::{
     core::Error,
@@ -8,9 +8,10 @@ use windows::{
             GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         UI::WindowsAndMessaging::{
-            GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowThreadProcessId,
-            IsIconic, IsWindow, SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER,
-            GW_OWNER, HWND_TOPMOST, SWP_NOACTIVATE, SW_RESTORE,
+            BringWindowToTop, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow,
+            GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow, SetForegroundWindow,
+            SetWindowPos, ShowWindow, GA_ROOTOWNER, GW_OWNER, HWND_TOPMOST, SWP_NOACTIVATE,
+            SW_RESTORE,
         },
     },
 };
@@ -74,13 +75,17 @@ pub fn shell_class(class: &str) -> bool {
             | "NotifyIconOverflowWindow"
             | "Progman"
             | "WorkerW"
+            | "MultitaskingViewFrame"
+            | "XamlExplorerHostIslandWindow"
+            | "TaskListThumbnailWnd"
     )
 }
 
 pub fn describe(id: WindowId) -> (String, String) {
-    let executable = executable_name(id.pid).unwrap_or_else(|error| {
-        eprintln!("Could not query foreground process {}: {error}", id.pid);
-        format!("Process {}", id.pid)
+    let display_pid = app_frame_child_pid(handle(id.hwnd), id.pid).unwrap_or(id.pid);
+    let executable = executable_name(display_pid).unwrap_or_else(|error| {
+        eprintln!("Could not query foreground process {display_pid}: {error}");
+        format!("Process {display_pid}")
     });
     let title = window_title(handle(id.hwnd)).unwrap_or_else(|error| {
         eprintln!("Could not read the foreground window title: {error}");
@@ -98,6 +103,9 @@ pub fn activate(id: WindowId) -> Result<(), String> {
     unsafe {
         if IsIconic(window).as_bool() {
             let _ = ShowWindow(window, SW_RESTORE);
+        }
+        if let Err(error) = BringWindowToTop(window) {
+            eprintln!("Could not bring the selected window to the top: {error}");
         }
         if SetForegroundWindow(window).as_bool() {
             Ok(())
@@ -132,18 +140,29 @@ pub fn monitor_rect(raw: isize, work_area: bool) -> Result<RECT, String> {
 pub fn position_overlay(raw: isize, target: isize) -> Result<(), String> {
     let rect = monitor_rect(target, false)?;
     let window = handle(raw);
-    // Position Anchor's own HWND in physical pixels without changing visibility.
+    // Apply physical monitor bounds twice and verify the native rectangle after each pass.
     unsafe {
-        SetWindowPos(
-            window,
-            Some(HWND_TOPMOST),
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
-            SWP_NOACTIVATE,
-        )
-        .map_err(|error| format!("Could not position the focus curtain: {error}"))?;
+        for attempt in 1..=2 {
+            SetWindowPos(
+                window,
+                Some(HWND_TOPMOST),
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                SWP_NOACTIVATE,
+            )
+            .map_err(|error| format!("Could not position the focus curtain: {error}"))?;
+            let mut actual = RECT::default();
+            GetWindowRect(window, &mut actual)
+                .map_err(|error| format!("Could not verify the focus curtain position: {error}"))?;
+            if actual != rect {
+                eprintln!("Focus curtain bounds differ from monitor on attempt {attempt}: {actual:?} vs {rect:?}");
+                if attempt == 2 {
+                    return Err("Windows could not size the focus curtain to the monitor.".into());
+                }
+            }
+        }
     }
     Ok(())
 }

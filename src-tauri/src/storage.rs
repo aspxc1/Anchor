@@ -1,4 +1,5 @@
 pub(crate) mod history;
+mod migrations;
 
 use chrono::{DateTime, Local, NaiveDate};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -11,7 +12,7 @@ use std::{
 };
 use uuid::Uuid;
 
-type StoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+pub type StoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,43 +76,9 @@ impl Storage {
         })?;
         let markdown = root.join("braindump");
         fs::create_dir_all(&markdown)?;
-        let connection = Connection::open(root.join("anchor.db"))?;
+        let mut connection = Connection::open(root.join("anchor.db"))?;
         connection.busy_timeout(Duration::from_secs(2))?;
-        connection.execute_batch(
-            "PRAGMA foreign_keys = ON;
-             CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                goal TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                ended_at TEXT,
-                planned_focus_minutes INTEGER NOT NULL,
-                actual_focus_seconds INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL CHECK (status IN ('completed', 'aborted')),
-                hall_passes_used INTEGER NOT NULL DEFAULT 0,
-                allowed_apps_json TEXT NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS blocked_switches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL REFERENCES sessions(id),
-                occurred_at TEXT NOT NULL,
-                process_name TEXT NOT NULL,
-                window_title TEXT NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS brain_dumps (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT REFERENCES sessions(id),
-                created_at TEXT NOT NULL,
-                content TEXT NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS pending_markdown_dates (day TEXT PRIMARY KEY);
-             CREATE INDEX IF NOT EXISTS brain_dumps_created_at ON brain_dumps(created_at);
-             CREATE INDEX IF NOT EXISTS brain_dumps_session ON brain_dumps(session_id);
-             CREATE INDEX IF NOT EXISTS blocked_switches_session ON blocked_switches(session_id);",
-        )?;
+        migrations::migrate(&mut connection)?;
         Ok(Self {
             connection,
             markdown,
@@ -124,6 +91,20 @@ impl Storage {
             "UPDATE sessions SET ended_at = started_at WHERE ended_at IS NULL",
             [],
         )?;
+        Ok(())
+    }
+
+    pub fn setting(&self, key: &str) -> StoreResult<Option<String>> {
+        Ok(self
+            .connection
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> StoreResult<()> {
+        self.connection.execute("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value])?;
         Ok(())
     }
 
@@ -314,6 +295,127 @@ mod tests {
             id
         );
         drop(storage);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn upgrades_v1_and_preserves_data_and_seed_values() {
+        let root = std::env::temp_dir().join(format!("anchor-migrate-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let db = Connection::open(root.join("anchor.db")).unwrap();
+        db.execute_batch("CREATE TABLE sessions (id TEXT PRIMARY KEY, goal TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, planned_focus_minutes INTEGER NOT NULL, actual_focus_seconds INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, hall_passes_used INTEGER NOT NULL DEFAULT 0, allowed_apps_json TEXT NOT NULL);
+            CREATE TABLE blocked_switches (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id), occurred_at TEXT NOT NULL, process_name TEXT NOT NULL, window_title TEXT NOT NULL);
+            CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO sessions VALUES ('s', 'existing goal', '2026-01-01', NULL, 25, 0, 'aborted', 0, '[]');
+            INSERT INTO blocked_switches (session_id, occurred_at, process_name, window_title) VALUES ('s', 'now', 'app', 'title');
+            INSERT INTO settings VALUES ('preferences', 'existing');").unwrap();
+        drop(db);
+        let storage = Storage::open(&root).unwrap();
+        assert_eq!(
+            storage
+                .connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            storage
+                .connection
+                .query_row("SELECT goal FROM sessions WHERE id='s'", [], |row| row
+                    .get::<_, String>(
+                    0
+                ))
+                .unwrap(),
+            "existing goal"
+        );
+        assert_eq!(
+            storage
+                .connection
+                .query_row("SELECT source FROM blocked_switches", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            "desktop"
+        );
+        assert_eq!(
+            storage.setting("preferences").unwrap().as_deref(),
+            Some("existing")
+        );
+        assert_eq!(
+            storage.setting("bridge_port").unwrap().as_deref(),
+            Some("17321")
+        );
+        assert_eq!(
+            storage.setting("autostart_enabled").unwrap().as_deref(),
+            Some("false")
+        );
+        let token = storage.setting("bridge_token").unwrap().unwrap();
+        assert_eq!(token.len(), 32);
+        assert!(token
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+        storage.set_setting("bridge_port", "18000").unwrap();
+        drop(storage);
+        let storage = Storage::open(&root).unwrap();
+        assert_eq!(
+            storage.setting("bridge_token").unwrap().as_deref(),
+            Some(token.as_str())
+        );
+        assert_eq!(
+            storage.setting("bridge_port").unwrap().as_deref(),
+            Some("18000")
+        );
+        drop(storage);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refuses_a_future_database_without_changing_it() {
+        let root = std::env::temp_dir().join(format!("anchor-future-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let db = Connection::open(root.join("anchor.db")).unwrap();
+        db.execute_batch("PRAGMA user_version = 99; CREATE TABLE marker (value TEXT); INSERT INTO marker VALUES ('kept');").unwrap();
+        drop(db);
+        assert!(Storage::open(&root).is_err());
+        let db = Connection::open(root.join("anchor.db")).unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            99
+        );
+        assert_eq!(
+            db.query_row("SELECT value FROM marker", [], |row| row
+                .get::<_, String>(0))
+                .unwrap(),
+            "kept"
+        );
+        drop(db);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_upgrade_rolls_back_schema_and_version() {
+        let root = std::env::temp_dir().join(format!("anchor-rollback-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let db = Connection::open(root.join("anchor.db")).unwrap();
+        db.execute_batch("CREATE TABLE profiles (id TEXT PRIMARY KEY);")
+            .unwrap();
+        drop(db);
+        assert!(Storage::open(&root).is_err());
+        let db = Connection::open(root.join("anchor.db")).unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'sessions'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        drop(db);
         fs::remove_dir_all(root).unwrap();
     }
 }
