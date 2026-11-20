@@ -58,6 +58,10 @@ impl Drop for Clock {
 }
 
 pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    app.state::<SessionState>()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .configure(app.handle());
     let dashboard = MenuItem::with_id(app, "dashboard", "Show Dashboard", true, None::<&str>)?;
     let unlock = MenuItem::with_id(app, "unlock", "Emergency Unlock", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;

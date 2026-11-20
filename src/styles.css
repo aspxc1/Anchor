@@ -140,3 +140,21 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .hud-pass { border-color: #ad7844; background: #3b2b1deb; animation: amber-pulse 2s ease-in-out infinite alternate; }
 .hud-pass .hud-phase, .hud-error { color: #ffce89; }
 @keyframes amber-pulse { to { border-color: #f8bb73; } }
+
+.settings-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.audio-settings { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.audio-settings > button:last-child { margin-left: auto; }
+.audio-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.audio-toggle input, .volume-field input { accent-color: var(--accent); }
+.volume-field { display: grid; gap: 3px; font-size: 12px; }
+.volume-field input { cursor: pointer; }
+
+.capture { display: grid; gap: 4px; height: 90px; padding: 12px 16px 8px; border: 1px solid #4d6256; border-radius: 15px; background: #192122fa; }
+.capture form { display: flex; align-items: center; gap: 12px; color: var(--accent); }
+.capture form svg { flex: none; }
+.capture input { flex: 1; min-width: 0; height: 36px; color: #f0f5ed; font-size: 17px; outline: none; }
+.capture input::placeholder { color: #adb8b6; }
+.capture p { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.capture kbd { margin-right: 3px; border-radius: 4px; padding: 2px 5px; background: #303c3e; color: #e9ecec; }
+.capture kbd:not(:first-child) { margin-left: 9px; }
+.capture .capture-error { color: #ffc3ae; }

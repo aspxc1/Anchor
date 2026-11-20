@@ -1,5 +1,5 @@
 import { getCurrentWindow, PhysicalPosition, primaryMonitor } from "@tauri-apps/api/window";
-import { GripVertical, LayoutDashboard, LockKeyhole, Play, Square, Ticket, TriangleAlert } from "lucide-react";
+import { GripVertical, LayoutDashboard, LockKeyhole, NotebookPen, Play, Square, Ticket, TriangleAlert, Volume2, VolumeX } from "lucide-react";
 import { useRef, useState, type PointerEvent } from "react";
 import { countdown, errorText, phaseName, useSession } from "./session";
 
@@ -27,7 +27,8 @@ export function Hud() {
     const window = getCurrentWindow();
     try {
       const [position, size, monitor] = await Promise.all([window.outerPosition(), window.outerSize(), primaryMonitor()]);
-      if (!monitor || pointer.current !== pointerId) return;
+      if (!monitor) throw new Error("Windows did not report the primary monitor.");
+      if (pointer.current !== pointerId) return;
       const min = monitor.workArea.position.x;
       drag.current = { start: screenX, position, min, max: Math.max(min, min + monitor.workArea.size.width - size.width), scale: monitor.scaleFactor };
     } catch (reason) {
@@ -67,7 +68,7 @@ export function Hud() {
       <span className="hud-phase">{phaseName(snapshot.phase)}</span>
       <time className="hud-time">{countdown(snapshot.seconds_left)}</time>
       <span className="hud-goal" title={snapshot.goal}>{snapshot.goal}</span>
-      {(error || dragError) && <span className="hud-error" role="alert" title={error || dragError}> <TriangleAlert size={15} /> </span>}
+      {(error || dragError || snapshot.error) && <span className="hud-error" role="alert" title={error || dragError || snapshot.error || undefined}> <TriangleAlert size={15} /> </span>}
       {focus && snapshot.needs_replacement && <button className="icon-button" aria-label="Pick a replacement window" title="Pick a replacement window" onClick={() => void act({ type: "show_recovery" })}><TriangleAlert size={16} /></button>}
       {focus && <button className="icon-button hud-ticket" aria-label={`Use Hall Pass, ${snapshot.hall_passes_remaining} remaining`} title="Use 60s Hall Pass" disabled={snapshot.hall_passes_remaining === 0} onClick={() => void act({ type: "use_hall_pass" })}><Ticket size={15} /><span>{snapshot.hall_passes_remaining}</span></button>}
       {pass && <button className="hud-small-button" onClick={() => void act({ type: "end_hall_pass" })}>End Pass Early</button>}
@@ -76,6 +77,10 @@ export function Hud() {
         <button className="icon-button" aria-label="End Session" title="End Session" onClick={() => void act({ type: "end_session" })}><Square size={14} /></button>
         <button className="icon-button" aria-label="Show dashboard to add a window" title="Show Dashboard" onClick={() => void act({ type: "show_dashboard" })}><LayoutDashboard size={15} /></button>
       </>}
+      <button className="icon-button" aria-label="Brain Dump" title={`Brain Dump (${snapshot.preferences.hotkey})`} onClick={() => void act({ type: "open_capture" })}><NotebookPen size={15} /></button>
+      <button className="icon-button" aria-label={snapshot.preferences.audio.enabled ? "Mute ambient audio" : "Unmute ambient audio"} title={snapshot.preferences.audio.enabled ? "Mute ambient audio" : "Unmute ambient audio"} onClick={() => void act({ type: "toggle_audio" })}>
+        {snapshot.preferences.audio.enabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+      </button>
       <button className="icon-button" aria-label="Emergency Unlock" title="Emergency Unlock" onClick={() => void act({ type: "open_emergency" })}><LockKeyhole size={15} /></button>
     </main>
   );

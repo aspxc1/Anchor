@@ -1,5 +1,8 @@
+pub(crate) mod capture;
+
 use crate::{
     policy::{self, Decision, WindowId},
+    storage::{Audio, Preferences, Storage},
     timing::{Phase, Timing},
     win32::{
         foreground,
@@ -26,6 +29,9 @@ pub struct BlockedSwitch {
 #[derive(Serialize, Clone)]
 pub struct Snapshot {
     revision: u64,
+    capture_open: bool,
+    preferences: Preferences,
+    shortcut_error: Option<String>,
     phase: &'static str,
     seconds_left: u64,
     hall_passes_remaining: u8,
@@ -46,19 +52,27 @@ pub struct SelectedWindow {
 }
 
 #[derive(Deserialize)]
+pub struct StartRequest {
+    goal: String,
+    windows: Vec<SelectedWindow>,
+    focus_minutes: u32,
+    break_minutes: u32,
+    hall_passes: u8,
+    audio: Audio,
+}
+
+#[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Action {
     Snapshot,
-    Start {
-        goal: String,
-        windows: Vec<SelectedWindow>,
-        focus_minutes: u32,
-        break_minutes: u32,
-        hall_passes: u8,
-    },
-    AddWindow {
-        window: SelectedWindow,
-    },
+    Start(StartRequest),
+    OpenCapture,
+    DismissCapture,
+    SaveCapture { content: String },
+    ChangeHotkey { hotkey: String },
+    ChangeAudio { audio: Audio },
+    ToggleAudio,
+    AddWindow { window: SelectedWindow },
     UseHallPass,
     EndHallPass,
     NextSprint,
@@ -66,14 +80,10 @@ pub enum Action {
     ShowRecovery,
     ShowDashboard,
     ReturnToFocus,
-    ReplaceWindow {
-        window: SelectedWindow,
-    },
+    ReplaceWindow { window: SelectedWindow },
     OpenEmergency,
     CloseEmergency,
-    TypeChallenge {
-        value: String,
-    },
+    TypeChallenge { value: String },
     BeginHold,
     CancelHold,
     ConfirmHold,
@@ -83,6 +93,13 @@ pub type SessionState = Mutex<Controller>;
 
 pub struct Controller {
     timing: Timing,
+    storage: Option<Storage>,
+    session_id: Option<String>,
+    preferences: Preferences,
+    shortcut_error: Option<String>,
+    registered_hotkey: Option<tauri_plugin_global_shortcut::Shortcut>,
+    capture_open: bool,
+    return_after_capture: Option<WindowId>,
     goal: String,
     allowed: Vec<OpenWindow>,
     last_allowed: Option<WindowId>,
@@ -100,6 +117,13 @@ impl Default for Controller {
     fn default() -> Self {
         Self {
             timing: Timing::default(),
+            storage: None,
+            session_id: None,
+            preferences: Preferences::default(),
+            shortcut_error: None,
+            registered_hotkey: None,
+            capture_open: false,
+            return_after_capture: None,
             goal: String::new(),
             allowed: Vec::new(),
             last_allowed: None,
@@ -120,6 +144,9 @@ impl Controller {
         let now = Instant::now();
         Snapshot {
             revision: self.revision,
+            capture_open: self.capture_open,
+            preferences: self.preferences.clone(),
+            shortcut_error: self.shortcut_error.clone(),
             phase: self.timing.phase.name(),
             seconds_left: self.timing.seconds_left(now),
             hall_passes_remaining: self.timing.passes_remaining,
@@ -144,15 +171,15 @@ impl Controller {
         snapshot
     }
 
-    fn start(
-        &mut self,
-        app: &AppHandle,
-        goal: String,
-        selected: Vec<SelectedWindow>,
-        focus_minutes: u32,
-        break_minutes: u32,
-        hall_passes: u8,
-    ) -> Result<(), String> {
+    fn start(&mut self, app: &AppHandle, request: StartRequest) -> Result<(), String> {
+        let StartRequest {
+            goal,
+            windows,
+            focus_minutes,
+            break_minutes,
+            hall_passes,
+            audio,
+        } = request;
         if self.timing.phase.is_running() {
             return Err("A focus session is already active.".into());
         }
@@ -163,28 +190,49 @@ impl Controller {
         if !(1..=180).contains(&focus_minutes)
             || !(1..=60).contains(&break_minutes)
             || hall_passes > 20
+            || audio.volume > 100
         {
             return Err(
                 "Choose 1–180 focus minutes, 1–60 break minutes, and up to 20 Hall Passes.".into(),
             );
         }
-        let allowed = validate_selection(selected)?;
+        let allowed = validate_selection(windows)?;
         let main = view(app, "main")?;
         let first = allowed[0].id();
         let hud = view(app, "hud")?;
         position_hud(&hud)?;
+        let mut preferences = self.preferences.clone();
+        preferences.focus_minutes = focus_minutes;
+        preferences.break_minutes = break_minutes;
+        preferences.hall_passes = hall_passes;
+        preferences.audio = audio;
+        self.persist_preferences(preferences)?;
         self.start_hook(app)?;
-        self.timing = Timing::new(focus_minutes, break_minutes, hall_passes, Instant::now());
-        if let Err(error) = hud.show() {
-            self.finish(app, Phase::Aborted);
-            return Err(format!("Could not show the session HUD: {error}"));
+        let started = (|| {
+            let json = serde_json::to_string(&allowed)
+                .map_err(|error| format!("Could not prepare allowlist: {error}"))?;
+            self.store()?
+                .start_session(&goal, focus_minutes, &json)
+                .map_err(|error| format!("Could not create the session record: {error}"))
+        })();
+        match started {
+            Ok(id) => self.session_id = Some(id),
+            Err(error) => {
+                self.hook.take();
+                return Err(error);
+            }
         }
+        self.timing = Timing::new(focus_minutes, break_minutes, hall_passes, Instant::now());
         self.goal = goal;
         self.allowed = allowed;
         self.last_allowed = Some(first);
         self.blocked.clear();
         self.violation = None;
         self.error = None;
+        if let Err(error) = hud.show() {
+            self.finish(app, Phase::Aborted);
+            return Err(format!("Could not show the session HUD: {error}"));
+        }
         if let Err(error) = foreground::activate(first) {
             eprintln!("Could not activate the first allowed window: {error}");
         }
@@ -313,13 +361,69 @@ impl Controller {
         self.hold_started = None;
     }
 
+    fn store(&self) -> Result<&Storage, String> {
+        self.storage.as_ref().ok_or_else(|| {
+            "Anchor storage is unavailable. Check %APPDATA%\\Anchor and restart.".into()
+        })
+    }
+
+    fn report_error(&mut self, error: String) {
+        eprintln!("{error}");
+        self.error = Some(error);
+    }
+
+    fn persist_preferences(&mut self, preferences: Preferences) -> Result<(), String> {
+        self.store()?
+            .save_preferences(&preferences)
+            .map_err(|error| format!("Could not save your preferences: {error}"))?;
+        self.preferences = preferences;
+        Ok(())
+    }
+
+    fn change_audio(&mut self, audio: Audio) -> Result<(), String> {
+        if audio.volume > 100 {
+            return Err("Choose a volume from 0 to 100.".into());
+        }
+        let mut preferences = self.preferences.clone();
+        preferences.audio = audio;
+        self.persist_preferences(preferences)
+    }
+
     fn finish(&mut self, app: &AppHandle, phase: Phase) {
-        self.timing.stop(phase, Instant::now());
+        let now = Instant::now();
+        self.timing.stop(phase, now);
         self.hook.take();
         self.close_emergency();
         self.violation = None;
+        self.capture_open = false;
+        self.return_after_capture = None;
+        hide(app, "braindump");
         hide(app, "curtain");
         hide(app, "hud");
+        if let Some(id) = self.session_id.take() {
+            let result = (|| {
+                let apps =
+                    serde_json::to_string(&self.allowed).map_err(|error| error.to_string())?;
+                self.store()?
+                    .finish_session(
+                        &id,
+                        if phase == Phase::Completed {
+                            "completed"
+                        } else {
+                            "aborted"
+                        },
+                        self.timing.actual_focus(now).as_secs(),
+                        self.timing.passes_used,
+                        &apps,
+                    )
+                    .map_err(|error| error.to_string())
+            })();
+            if let Err(error) = result {
+                self.report_error(format!(
+                    "The session ended, but Anchor could not update its database record: {error}"
+                ));
+            }
+        }
         show_dashboard(app);
     }
 
@@ -329,23 +433,22 @@ impl Controller {
         }
         match action {
             Action::Snapshot => return Ok(()),
-            Action::ShowDashboard if source == "hud" => show_dashboard(app),
-            Action::Start {
-                goal,
-                windows,
-                focus_minutes,
-                break_minutes,
-                hall_passes,
-            } if source == "main" => {
-                self.start(
-                    app,
-                    goal,
-                    windows,
-                    focus_minutes,
-                    break_minutes,
-                    hall_passes,
-                )?;
+            Action::OpenCapture if matches!(source, "main" | "hud") => self.show_capture(app)?,
+            Action::DismissCapture if source == "braindump" => self.dismiss_capture(app),
+            Action::SaveCapture { content } if source == "braindump" => {
+                self.save_capture(app, &content)?
             }
+            Action::ChangeHotkey { hotkey } if source == "main" => {
+                self.change_hotkey(app, &hotkey)?
+            }
+            Action::ChangeAudio { audio } if source == "main" => self.change_audio(audio)?,
+            Action::ToggleAudio if source == "hud" => {
+                let mut audio = self.preferences.audio;
+                audio.enabled = !audio.enabled;
+                self.change_audio(audio)?;
+            }
+            Action::ShowDashboard if source == "hud" => show_dashboard(app),
+            Action::Start(request) if source == "main" => self.start(app, request)?,
             Action::ReturnToFocus
                 if source == "curtain" && self.timing.phase == Phase::ActiveFocus =>
             {
@@ -524,10 +627,6 @@ impl Controller {
         if self.timing.phase.is_running() {
             self.finish(app, Phase::Aborted);
         }
-    }
-
-    pub fn shutdown(&mut self) {
-        self.hook.take();
     }
 }
 

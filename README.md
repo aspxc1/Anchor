@@ -35,3 +35,11 @@ npm run tauri dev
 2. Activate a Hall Pass from the curtain and switch apps. Leave a blocked app in the foreground until the pass reaches zero. Confirm the curtain returns immediately and the focus clock resumes where it paused. Use the second pass from the HUD and end it early.
 3. During a break, switch freely and add a new window from the dashboard. Start the next focus sprint early. Verify the added window is now allowed, then end the session during the next break.
 4. Drag the HUD left and right. Confirm it stays at the top of the primary work area. Confirm **Quit** from the tray removes the HUD and ends enforcement.
+
+## Brain Dump and audio acceptance check
+
+1. Start a focus session with noise enabled. Try brown and pink noise and the volume slider. Confirm toggling mute from the HUD fades the sound and entering a break pauses it.
+2. During focus, press **Ctrl+Shift+Space**, type a note, and press **Enter**. Confirm the popup closes and returns you to an allowed window. Verify the note in `%APPDATA%\Anchor\anchor.db` and in today's file in `%APPDATA%\Anchor\braindump`.
+3. Repeat with **Esc** and by clicking away. Confirm neither dismissal saves a note. Change the shortcut in **Settings**, retry capture, and restart Anchor to verify that the shortcut is retained.
+
+Anchor's daily Markdown files are generated from SQLite. An export that fails is queued for retry on the next capture or launch.

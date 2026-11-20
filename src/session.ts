@@ -4,8 +4,25 @@ import { useEffect, useState } from "react";
 import type { OpenWindow } from "./windowSelection";
 
 type WindowId = Pick<OpenWindow, "hwnd" | "pid">;
+export interface Audio {
+  enabled: boolean;
+  noise: "brown" | "pink";
+  volume: number;
+}
+
+export interface Preferences {
+  hotkey: string;
+  focus_minutes: number;
+  break_minutes: number;
+  hall_passes: number;
+  audio: Audio;
+}
+
 export interface Snapshot {
   revision: number;
+  capture_open: boolean;
+  preferences: Preferences;
+  shortcut_error: string | null;
   phase: "Idle" | "ActiveFocus" | "HallPass" | "Break" | "Completed" | "Aborted";
   seconds_left: number;
   hall_passes_remaining: number;
@@ -20,10 +37,13 @@ export interface Snapshot {
 }
 
 export type Action =
-  | { type: "start"; goal: string; windows: WindowId[]; focus_minutes: number; break_minutes: number; hall_passes: number }
+  | { type: "start"; goal: string; windows: WindowId[]; focus_minutes: number; break_minutes: number; hall_passes: number; audio: Audio }
+  | { type: "save_capture"; content: string }
+  | { type: "change_hotkey"; hotkey: string }
+  | { type: "change_audio"; audio: Audio }
   | { type: "replace_window" | "add_window"; window: WindowId }
   | { type: "type_challenge"; value: string }
-  | { type: "snapshot" | "return_to_focus" | "open_emergency" | "close_emergency" | "begin_hold" | "cancel_hold" | "confirm_hold" | "use_hall_pass" | "end_hall_pass" | "next_sprint" | "end_session" | "show_recovery" | "show_dashboard" };
+  | { type: "snapshot" | "return_to_focus" | "open_emergency" | "close_emergency" | "begin_hold" | "cancel_hold" | "confirm_hold" | "use_hall_pass" | "end_hall_pass" | "next_sprint" | "end_session" | "show_recovery" | "show_dashboard" | "open_capture" | "dismiss_capture" | "toggle_audio" };
 
 export function send(action: Action): Promise<Snapshot> {
   return invoke<Snapshot>("session_command", { action });

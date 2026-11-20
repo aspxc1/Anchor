@@ -1,11 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Anchor, Check, Layers2, Monitor, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
+import { Anchor, Check, Layers2, Monitor, NotebookPen, PanelsTopLeft, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { countdown, phaseName, useSession } from "./session";
+import { prepareAudio, useAmbientAudio } from "./ambient";
+import { countdown, phaseName, useSession, type Audio } from "./session";
 import { filterWindows, retainSelection, type OpenWindow } from "./windowSelection";
 
 export function Dashboard() {
   const { snapshot, error: sessionError, act } = useSession();
+  const audioError = useAmbientAudio(snapshot);
+  const [audioWarmupError, setAudioWarmupError] = useState<string>();
+  const [audio, setAudio] = useState<Audio>({ enabled: false, volume: 22, noise: "brown" });
+  const [hotkey, setHotkey] = useState("Ctrl+Shift+Space");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const loadedPreferences = useRef(false);
   const [preset, setPreset] = useState("25/5");
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [breakMinutes, setBreakMinutes] = useState(5);
@@ -40,6 +47,36 @@ export function Dashboard() {
     return () => { requestId.current++; };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!snapshot || loadedPreferences.current) return;
+    loadedPreferences.current = true;
+    const defaults = snapshot.preferences;
+    setFocusMinutes(defaults.focus_minutes);
+    setBreakMinutes(defaults.break_minutes);
+    setHallPasses(defaults.hall_passes);
+    setPreset(defaults.focus_minutes === 25 && defaults.break_minutes === 5 ? "25/5" :
+      defaults.focus_minutes === 50 && defaults.break_minutes === 10 ? "50/10" : "custom");
+    setHotkey(defaults.hotkey);
+  }, [snapshot]);
+
+  const savedAudio = snapshot?.preferences.audio;
+  const savedEnabled = savedAudio?.enabled;
+  const savedNoise = savedAudio?.noise;
+  const savedVolume = savedAudio?.volume;
+  useEffect(() => {
+    if (savedEnabled !== undefined && savedNoise !== undefined && savedVolume !== undefined) {
+      setAudio({ enabled: savedEnabled, noise: savedNoise, volume: savedVolume });
+    }
+  }, [savedEnabled, savedNoise, savedVolume]);
+
+  function warmAudio() {
+    setAudioWarmupError(undefined);
+    void prepareAudio().catch((reason) => {
+      console.error(reason);
+      setAudioWarmupError("The WebView could not activate ambient audio.");
+    });
+  }
+
   const toggle = ({ hwnd, pid }: OpenWindow) => {
     setSelection((selected) => {
       const next = new Map(selected);
@@ -66,13 +103,25 @@ export function Dashboard() {
         </div>
       </aside>
       <main className="workspace">
-        <header className="page-header">
-          <h1>Session setup</h1>
-          <p>Choose the windows you need for your next focus session.</p>
+        <header className="page-header settings-heading">
+          <div>
+            <h1>Session setup</h1>
+            <p>Choose the windows you need for your next focus session.</p>
+          </div>
+          <button className="quiet-button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen}>Settings</button>
         </header>
         {(snapshot?.phase === "Aborted" || snapshot?.phase === "Completed") && (
           <p className="session-notice" role="status">{snapshot.phase === "Aborted" ? "Session unlocked" : "Session complete"}. {countdown(snapshot.actual_focus_seconds)} focused · {snapshot.blocked_count} blocked switches.</p>
         )}
+        {settingsOpen && (
+          <form className="session-settings panel" onSubmit={(event) => { event.preventDefault(); void act({ type: "change_hotkey", hotkey }); }}>
+            <label className="field"><span>Brain Dump shortcut</span><input value={hotkey} maxLength={80} required onChange={(event) => setHotkey(event.target.value)} /></label>
+            <button type="submit" className="quiet-button">Save shortcut</button>
+            <button type="button" className="quiet-button" onClick={() => void act({ type: "open_capture" })}><NotebookPen size={15} /> Open Brain Dump</button>
+          </form>
+        )}
+        {snapshot?.shortcut_error && <p className="action-error" role="alert">{snapshot.shortcut_error}</p>}
+        {(audioError || audioWarmupError) && <p className="action-error" role="alert">{audioError || audioWarmupError}</p>}
         {(sessionError || snapshot?.error) && <p className="action-error" role="alert">{sessionError || snapshot?.error}</p>}
         {running && snapshot ? (
           <section className="session-settings panel" aria-label="Current session">
@@ -84,12 +133,17 @@ export function Dashboard() {
               <button className="primary-button" onClick={() => void act({ type: "next_sprint" })}>Start Next Focus Sprint</button>
               <button className="quiet-button" onClick={() => void act({ type: "end_session" })}>End Session</button>
             </>}
+            {settingsOpen && <div className="audio-settings">
+              <AudioFields audio={audio} change={setAudio} />
+              <button className="quiet-button" onClick={() => { warmAudio(); void act({ type: "change_audio", audio }); }}>Apply audio</button>
+            </div>}
           </section>
         ) : <form className="session-settings panel" onSubmit={(event) => {
           event.preventDefault();
+          warmAudio();
           void act({
             type: "start", goal, windows: allowed.map(({ hwnd, pid }) => ({ hwnd, pid })),
-            focus_minutes: focusMinutes, break_minutes: breakMinutes, hall_passes: hallPasses,
+            focus_minutes: focusMinutes, break_minutes: breakMinutes, hall_passes: hallPasses, audio,
           });
         }}>
           <label className="field">
@@ -114,7 +168,10 @@ export function Dashboard() {
             <label className="field compact-field"><span>Break (min)</span><input type="number" min={1} max={60} required value={breakMinutes || ""} onChange={(event) => setBreakMinutes(Number(event.target.value))} /></label>
           </>}
           <label className="field compact-field"><span>Hall Passes</span><input type="number" min={0} max={20} required value={hallPasses} onChange={(event) => setHallPasses(Number(event.target.value))} /></label>
-          <button className="primary-button" disabled={!goal.trim() || allowed.length === 0}>Start focus</button>
+          <div className="audio-settings">
+            <AudioFields audio={audio} change={setAudio} />
+            <button className="primary-button" disabled={!goal.trim() || allowed.length === 0}>Start focus</button>
+          </div>
         </form>}
         <div className="grid min-h-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
           <section className="panel" aria-labelledby="open-windows" aria-busy={loading}>
@@ -187,5 +244,24 @@ export function Dashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+function AudioFields({ audio, change }: { audio: Audio; change: (next: Audio) => void }) {
+  return (
+    <>
+      <label className="audio-toggle"><input type="checkbox" checked={audio.enabled} onChange={(event) => change({ ...audio, enabled: event.target.checked })} /> Ambient audio</label>
+      {audio.enabled && <>
+        <label className="field compact-field"><span>Noise</span>
+          <select value={audio.noise} onChange={(event) => change({ ...audio, noise: event.target.value === "pink" ? "pink" : "brown" })}>
+            <option value="brown">Brown noise</option>
+            <option value="pink">Pink noise</option>
+          </select>
+        </label>
+        <label className="volume-field"><span>Volume {audio.volume}%</span>
+          <input type="range" min={0} max={100} value={audio.volume} onChange={(event) => change({ ...audio, volume: Number(event.target.value) })} />
+        </label>
+      </>}
+    </>
   );
 }

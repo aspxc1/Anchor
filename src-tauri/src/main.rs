@@ -7,6 +7,8 @@ mod desktop;
 #[cfg(windows)]
 mod policy;
 #[cfg(windows)]
+mod storage;
+#[cfg(windows)]
 mod timing;
 #[cfg(windows)]
 mod win32;
@@ -37,8 +39,14 @@ fn list_open_windows() -> Result<Vec<OpenWindow>, String> {
 }
 
 fn main() {
-    let builder =
-        tauri::Builder::default().plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    let shortcuts = tauri_plugin_global_shortcut::Builder::new();
+    #[cfg(windows)]
+    let shortcuts = shortcuts.with_handler(|app, _, event| {
+        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+            controller::capture::shortcut_pressed(app);
+        }
+    });
+    let builder = tauri::Builder::default().plugin(shortcuts.build());
     #[cfg(windows)]
     let builder = builder
         .manage(controller::SessionState::default())
@@ -64,10 +72,11 @@ fn main() {
             #[cfg(windows)]
             if matches!(_event, tauri::RunEvent::Exit) {
                 desktop::shutdown(_app);
+                controller::capture::unregister_shortcuts(_app);
                 _app.state::<controller::SessionState>()
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())
-                    .shutdown();
+                    .before_quit(_app);
             }
         }),
         Err(error) => {
