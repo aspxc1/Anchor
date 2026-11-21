@@ -34,12 +34,12 @@ pub fn strip_frame(raw: isize) {
     }
 }
 
-pub fn cursor_x() -> Result<i32, String> {
+pub fn cursor_pos() -> Result<(i32, i32), String> {
     let mut cursor = POINT::default();
     // The point storage is writable for the duration of GetCursorPos.
     unsafe { GetCursorPos(&mut cursor) }
         .map_err(|error| format!("Could not read the pointer position: {error}"))?;
-    Ok(cursor.x)
+    Ok((cursor.x, cursor.y))
 }
 
 pub fn rect(raw: isize) -> Result<RECT, String> {

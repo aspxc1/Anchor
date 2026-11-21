@@ -26,22 +26,23 @@ export function Hud() {
     return request.current;
   }
 
-  function beginDrag(event: PointerEvent<HTMLDivElement>) {
+  function beginDrag(event: PointerEvent<HTMLElement>) {
     if (event.button !== 0 || pointer.current !== null) return;
+    if ((event.target as HTMLElement).closest("button")) return;
     pointer.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragError(undefined);
     void drag("begin");
   }
 
-  function move(event: PointerEvent<HTMLDivElement>) {
+  function move(event: PointerEvent<HTMLElement>) {
     if (pointer.current !== event.pointerId || frame.current !== undefined) return;
     frame.current = requestAnimationFrame(() => {
       void drag("move").finally(() => { frame.current = undefined; });
     });
   }
 
-  function endDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
+  function endDrag(event: PointerEvent<HTMLElement>, cancelled = false) {
     if (pointer.current !== event.pointerId) return;
     pointer.current = null;
     if (frame.current !== undefined) {
@@ -56,10 +57,10 @@ export function Hud() {
   const onBreak = snapshot.phase === "Break";
   const focus = snapshot.phase === "ActiveFocus";
   return (
-    <main className={`hud ${pass ? "hud-pass" : onBreak ? "hud-break" : ""}`}>
-      <div className="hud-grip" title="Move HUD horizontally"
-        onPointerDown={beginDrag} onPointerMove={move}
-        onPointerUp={endDrag} onLostPointerCapture={(event) => endDrag(event, true)} onPointerCancel={(event) => endDrag(event, true)}>
+    <main className={`hud ${pass ? "hud-pass" : onBreak ? "hud-break" : ""}`}
+      onPointerDown={beginDrag} onPointerMove={move}
+      onPointerUp={endDrag} onLostPointerCapture={(event) => endDrag(event, true)} onPointerCancel={(event) => endDrag(event, true)}>
+      <div className="hud-grip" title="Drag to move HUD">
         <GripVertical size={16} aria-hidden="true" />
       </div>
       <span className="hud-phase">{phaseName(snapshot.phase)}</span>

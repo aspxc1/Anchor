@@ -127,8 +127,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .window-entry .window-row { flex: 1; min-width: 0; border: 0; }
 .window-entry .row-action { margin-right: 12px; }
 
-.hud { display: flex; width: 100%; height: 42px; align-items: center; gap: 6px; border: 1px solid #495653; border-radius: 21px; padding: 0 8px 0 6px; overflow: hidden; background: #151c1eee; color: #f2f4f4; }
-.hud-grip { display: grid; flex: none; width: 20px; height: 36px; place-items: center; color: #899693; cursor: ew-resize; touch-action: none; }
+.hud { display: flex; width: 100%; height: 42px; align-items: center; gap: 6px; border: 1px solid #495653; border-radius: 21px; padding: 0 8px 0 6px; overflow: hidden; background: #151c1eee; color: #f2f4f4; cursor: grab; touch-action: none; user-select: none; }
+.hud:active { cursor: grabbing; }
+.hud-grip { display: grid; flex: none; width: 20px; height: 36px; place-items: center; color: #899693; }
 .hud-phase { flex: none; color: var(--accent); font-size: 11px; font-weight: 700; }
 .hud-time { flex: none; font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; font-size: 15px; font-weight: 700; }
 .hud-goal { flex: 1; min-width: 0; padding-inline: 4px; overflow: hidden; color: #b4bebf; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }

@@ -11,10 +11,13 @@ struct Placement {
     monitor_index: usize,
     monitor_name: Option<String>,
     offset_x: i32,
+    #[serde(default)]
+    offset_y: Option<i32>,
 }
 
 pub(super) struct Drag {
     cursor_x: i32,
+    cursor_y: i32,
     left: i32,
     top: i32,
 }
@@ -60,36 +63,43 @@ pub(super) fn position(window: &WebviewWindow, storage: &Storage) -> Result<(), 
         if placement.monitor_name.is_none()
             || indexed.is_some_and(|monitor| monitor.name() == placement.monitor_name.as_ref())
         {
-            indexed.map(|monitor| (monitor, placement.offset_x))
+            indexed.map(|monitor| (monitor, placement.offset_x, placement.offset_y))
         } else {
             monitors
                 .iter()
                 .find(|monitor| monitor.name() == placement.monitor_name.as_ref())
-                .map(|monitor| (monitor, placement.offset_x))
+                .map(|monitor| (monitor, placement.offset_x, placement.offset_y))
         }
     });
     let raw = handle(window)?;
     hud::strip_frame(raw);
-    if let Some((monitor, offset)) = saved {
-        snap(raw, monitor, Some(offset))
+    if let Some((monitor, offset_x, offset_y)) = saved {
+        snap(raw, monitor, Some(offset_x), offset_y)
     } else {
         let primary = window
             .primary_monitor()
             .map_err(|error| format!("Could not find the primary monitor: {error}"))?
             .ok_or("Windows did not report a primary monitor.")?;
-        snap(raw, &primary, None)
+        snap(raw, &primary, None, None)
     }
 }
 
-fn snap(raw: isize, monitor: &Monitor, offset: Option<i32>) -> Result<(), String> {
+fn snap(
+    raw: isize,
+    monitor: &Monitor,
+    offset_x: Option<i32>,
+    offset_y: Option<i32>,
+) -> Result<(), String> {
     let area = monitor.work_area();
     // Moving across displays may resize the HUD in WM_DPICHANGED. Clamp again
-    // with its actual width on the destination display.
+    // with its actual dimensions on the destination display.
     for _ in 0..2 {
         let rect = hud::rect(raw)?;
-        let available = (area.size.width as i32 - (rect.right - rect.left)).max(0);
-        let x = area.position.x + offset.unwrap_or(available / 2).clamp(0, available);
-        hud::move_to(raw, x, area.position.y + TOP_PADDING)?;
+        let available_x = (area.size.width as i32 - (rect.right - rect.left)).max(0);
+        let available_y = (area.size.height as i32 - (rect.bottom - rect.top)).max(0);
+        let x = area.position.x + offset_x.unwrap_or(available_x / 2).clamp(0, available_x);
+        let y = area.position.y + offset_y.unwrap_or(TOP_PADDING).clamp(0, available_y);
+        hud::move_to(raw, x, y)?;
     }
     Ok(())
 }
@@ -114,15 +124,19 @@ fn snap_and_save(window: &WebviewWindow, storage: &Storage, raw: isize) -> Resul
                 && monitor.work_area().position.y == area.top
         })
         .ok_or("The HUD's monitor changed during the drag. Try again.")?;
+    let work_area = monitor.work_area();
     snap(
         raw,
         monitor,
-        Some(rect.left - monitor.work_area().position.x),
+        Some(rect.left - work_area.position.x),
+        Some(rect.top - work_area.position.y),
     )?;
+    let final_rect = hud::rect(raw)?;
     let placement = Placement {
         monitor_index: index,
         monitor_name: monitor.name().cloned(),
-        offset_x: hud::rect(raw)?.left - monitor.work_area().position.x,
+        offset_x: final_rect.left - work_area.position.x,
+        offset_y: Some(final_rect.top - work_area.position.y),
     };
     let value = serde_json::to_string(&placement).map_err(|error| error.to_string())?;
     storage
@@ -142,8 +156,10 @@ pub fn hud_drag(window: WebviewWindow, action: DragAction) -> Result<(), String>
     let result = match action {
         DragAction::Begin => {
             let rect = hud::rect(raw)?;
+            let (cursor_x, cursor_y) = hud::cursor_pos()?;
             state.hud_drag = Some(Drag {
-                cursor_x: hud::cursor_x()?,
+                cursor_x,
+                cursor_y,
                 left: rect.left,
                 top: rect.top,
             });
@@ -169,6 +185,12 @@ pub fn hud_drag(window: WebviewWindow, action: DragAction) -> Result<(), String>
 }
 
 fn move_drag(raw: isize, drag: &Drag) -> Result<(), String> {
-    let delta = hud::cursor_x()?.saturating_sub(drag.cursor_x);
-    hud::move_to(raw, drag.left.saturating_add(delta), drag.top)
+    let (cursor_x, cursor_y) = hud::cursor_pos()?;
+    let delta_x = cursor_x.saturating_sub(drag.cursor_x);
+    let delta_y = cursor_y.saturating_sub(drag.cursor_y);
+    hud::move_to(
+        raw,
+        drag.left.saturating_add(delta_x),
+        drag.top.saturating_add(delta_y),
+    )
 }
