@@ -68,14 +68,16 @@ pub(super) fn position(window: &WebviewWindow, storage: &Storage) -> Result<(), 
                 .map(|monitor| (monitor, placement.offset_x))
         }
     });
+    let raw = handle(window)?;
+    hud::strip_frame(raw);
     if let Some((monitor, offset)) = saved {
-        snap(handle(window)?, monitor, Some(offset))
+        snap(raw, monitor, Some(offset))
     } else {
         let primary = window
             .primary_monitor()
             .map_err(|error| format!("Could not find the primary monitor: {error}"))?
             .ok_or("Windows did not report a primary monitor.")?;
-        snap(handle(window)?, &primary, None)
+        snap(raw, &primary, None)
     }
 }
 
