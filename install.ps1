@@ -114,7 +114,7 @@ function Install-WithWinget {
 }
 
 function Test-NodeReady {
-    if (-not (Test-CommandExists "node") -or -not (Test-CommandExists "npm")) {
+    if (-not (Test-CommandExists "node") -or -not (Test-CommandExists "npm.cmd")) {
         return $false
     }
     $versionText = (& node -v 2>$null)
@@ -257,10 +257,10 @@ try {
 
     # 4. Install frontend dependencies and build the installer
     Write-Step "Installing npm dependencies"
-    Invoke-Native -FilePath "npm" -Arguments @("ci")
+    Invoke-Native -FilePath "npm.cmd" -Arguments @("ci")
 
     Write-Step "Building Anchor ($InstallerType installer) - the first Rust build may take a few minutes"
-    Invoke-Native -FilePath "npm" -Arguments @("run", "tauri", "--", "build", "--bundles", $InstallerType)
+    Invoke-Native -FilePath "npm.cmd" -Arguments @("run", "tauri", "--", "build", "--bundles", $InstallerType)
 
     # 5. Locate the generated installer
     if ($InstallerType -eq "nsis") {
