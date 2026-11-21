@@ -363,6 +363,14 @@ impl Controller {
                     self.dismiss_curtain(app);
                     return;
                 }
+                if self.rebind_closed_allowed(window, &process_name, &window_title) {
+                    self.last_allowed = Some(window);
+                    if foreground::current() == hwnd && self.challenge.is_none() {
+                        self.violation = None;
+                        hide(app, "curtain");
+                    }
+                    return;
+                }
                 let blocked = BlockedSwitch {
                     process_name,
                     window_title,
@@ -383,6 +391,29 @@ impl Controller {
                 }
             }
         }
+    }
+
+    fn rebind_closed_allowed(
+        &mut self,
+        window: WindowId,
+        process_name: &str,
+        window_title: &str,
+    ) -> bool {
+        if process_name.is_empty() {
+            return false;
+        }
+        let Some(entry) = self.allowed.iter_mut().find(|entry| {
+            entry.process_name.eq_ignore_ascii_case(process_name)
+                && foreground::identify(entry.hwnd) != Some(entry.id())
+        }) else {
+            return false;
+        };
+        entry.hwnd = window.hwnd;
+        entry.pid = window.pid;
+        if !window_title.is_empty() {
+            entry.title = window_title.to_owned();
+        }
+        true
     }
 
     fn record_blocked_switch(&mut self, blocked: &BlockedSwitch) {
