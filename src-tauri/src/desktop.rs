@@ -21,16 +21,28 @@ impl Clock {
         let thread = thread::Builder::new()
             .name("anchor-clock".into())
             .spawn(move || {
+                let mut subticks: u8 = 0;
                 while let Err(mpsc::RecvTimeoutError::Timeout) =
-                    receiver.recv_timeout(Duration::from_secs(1))
+                    receiver.recv_timeout(Duration::from_millis(250))
                 {
+                    subticks = (subticks + 1) % 4;
+                    let show_requested = crate::storage::take_show_request();
+                    if !show_requested && subticks != 0 {
+                        continue;
+                    }
+                    let tick_now = subticks == 0;
                     let app = app.clone();
                     if let Err(error) = app.clone().run_on_main_thread(move || {
-                        let state = app.state::<SessionState>();
-                        state
-                            .lock()
-                            .unwrap_or_else(|error| error.into_inner())
-                            .tick(&app);
+                        if show_requested {
+                            controller::show_dashboard(&app);
+                        }
+                        if tick_now {
+                            let state = app.state::<SessionState>();
+                            state
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .tick(&app);
+                        }
                     }) {
                         eprintln!("Could not deliver timer tick: {error}");
                         break;

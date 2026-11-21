@@ -44,6 +44,10 @@ fn list_open_windows() -> Result<Vec<OpenWindow>, String> {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if storage::notify_existing_instance() {
+        return;
+    }
     let shortcuts = tauri_plugin_global_shortcut::Builder::new();
     #[cfg(windows)]
     let shortcuts = shortcuts.with_handler(|app, _, event| {

@@ -60,6 +60,40 @@ pub struct Storage {
     markdown: PathBuf,
 }
 
+pub fn data_dir() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|appdata| PathBuf::from(appdata).join("Anchor"))
+}
+
+pub fn notify_existing_instance() -> bool {
+    let Some(root) = data_dir() else {
+        return false;
+    };
+    if fs::create_dir_all(&root).is_err() {
+        return false;
+    }
+    let Ok(lock) = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(root.join("anchor.lock"))
+    else {
+        return false;
+    };
+    if lock.try_lock().is_err() {
+        let _ = fs::write(root.join("anchor.show"), b"1");
+        return true;
+    }
+    let _ = fs::remove_file(root.join("anchor.show"));
+    false
+}
+
+pub fn take_show_request() -> bool {
+    data_dir()
+        .map(|root| fs::remove_file(root.join("anchor.show")).is_ok())
+        .unwrap_or(false)
+}
+
 impl Storage {
     pub fn open(root: &Path) -> StoreResult<Self> {
         fs::create_dir_all(root)?;
@@ -74,6 +108,7 @@ impl Storage {
                 "Anchor storage is already in use or cannot be locked: {error}"
             ))
         })?;
+        let _ = fs::remove_file(root.join("anchor.show"));
         let markdown = root.join("braindump");
         fs::create_dir_all(&markdown)?;
         let mut connection = Connection::open(root.join("anchor.db"))?;

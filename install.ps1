@@ -287,7 +287,14 @@ try {
         return
     }
 
-    # 6. Launch the installer
+    # 6. Close any running Anchor instance and launch the installer
+    $running = Get-Process -Name "anchor" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Step "Closing running Anchor instance before installing"
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 600
+    }
+
     Write-Step "Launching installer"
     if ($InstallerType -eq "nsis") {
         $proc = Start-Process -FilePath $installer.FullName -PassThru -Wait
