@@ -19,11 +19,20 @@ function leave(url) {
   location.replace(url);
 }
 
-if (target) domain.textContent = target.hostname.replace(/^www\./i, "");
-else feedback.textContent = "This blocked page has no destination.";
+if (target) {
+  const host = target.hostname.replace(/^www\./i, "");
+  domain.textContent = host;
+  document.title = `${host} · Saved for later · Anchor`;
+} else {
+  feedback.textContent = "This blocked page has no destination.";
+}
 
 document.getElementById("back").addEventListener("click", () => {
-  leave(previous && previous.href !== target?.href ? previous.href : "about:blank");
+  if (previous && previous.href !== target?.href) {
+    leave(previous.href);
+    return;
+  }
+  void chrome.runtime.sendMessage({ type: "leave-blocked-tab" }).catch(() => {});
 });
 
 async function refresh() {
@@ -68,6 +77,10 @@ pass.addEventListener("click", async () => {
     usingPass = false;
     void refresh();
   }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) void refresh();
 });
 
 void refresh();

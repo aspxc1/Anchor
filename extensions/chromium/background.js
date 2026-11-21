@@ -14,7 +14,13 @@ let pingTimer = null;
 let retryDelay = 1000;
 const navigation = new Map();
 const lastSafe = new Map();
+const lastAllowedTab = new Map();
 const recentBlocks = new Map();
+const blockedPagePrefix = chrome.runtime.getURL('blocked.html');
+
+function isBlockedPage(value) {
+  return typeof value === 'string' && value.startsWith(blockedPagePrefix);
+}
 
 function validStatus(value) {
   return value && ['Idle', 'ActiveFocus', 'HallPass', 'Break'].includes(value.state)
@@ -111,7 +117,7 @@ async function configure() {
   await sweepActive();
 }
 
-async function inspect(tabId, value) {
+async function inspect(tabId, value, windowId = null) {
   const target = targetUrl(value);
   if (!target || tabId == null || tabId < 0) return;
   const sequence = (navigation.get(tabId) || 0) + 1;
@@ -120,7 +126,10 @@ async function inspect(tabId, value) {
   if (navigation.get(tabId) !== sequence || !status) return;
   if (status.state !== 'ActiveFocus' || isAllowed(target.href, status)) {
     // Save only an allowed URL, never the blocked page or credentials.
-    if (isAllowed(target.href, status)) lastSafe.set(tabId, target.href);
+    if (isAllowed(target.href, status)) {
+      lastSafe.set(tabId, target.href);
+      if (windowId != null) lastAllowedTab.set(windowId, tabId);
+    }
     return;
   }
   // A disconnected socket cannot prove that a cached focus policy is current.
@@ -159,21 +168,53 @@ async function inspect(tabId, value) {
 async function sweepActive() {
   try {
     const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    for (const tab of tabs) void inspect(tab.id, tab.pendingUrl || tab.url);
+    for (const tab of tabs) void inspect(tab.id, tab.pendingUrl || tab.url, tab.windowId);
   } catch { /* Browser may be shutting down. */ }
+}
+
+async function leaveBlockedTab(senderTab) {
+  if (!senderTab || senderTab.windowId == null) return;
+  const status = await statusNow();
+  const tabs = await chrome.tabs.query({ windowId: senderTab.windowId });
+  const candidates = tabs.filter((tab) => {
+    if (tab.id == null || tab.id === senderTab.id) return false;
+    const url = tab.pendingUrl || tab.url || '';
+    if (isBlockedPage(url)) return false;
+    return !status || isAllowed(url, status);
+  });
+  const preferredId = lastAllowedTab.get(senderTab.windowId);
+  const byRecency = (a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0);
+  const chosen = candidates.find((tab) => tab.id === preferredId)
+    || candidates.filter((tab) => targetUrl(tab.pendingUrl || tab.url)).sort(byRecency)[0]
+    || candidates.sort(byRecency)[0];
+  if (chosen) {
+    await chrome.tabs.update(chosen.id, { active: true });
+  } else {
+    await chrome.tabs.create({ windowId: senderTab.windowId, active: true });
+  }
 }
 
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId === 0) void inspect(details.tabId, details.url);
 });
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url) void inspect(tabId, changeInfo.url);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url) void inspect(tabId, changeInfo.url, tab?.active ? tab.windowId : null);
 });
-chrome.tabs.onActivated.addListener(({ tabId }) => {
-  void chrome.tabs.get(tabId).then((tab) => inspect(tabId, tab.pendingUrl || tab.url)).catch(() => {});
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  void chrome.tabs.get(tabId).then((tab) => {
+    const url = tab.pendingUrl || tab.url;
+    if (!targetUrl(url)) {
+      if (!isBlockedPage(url)) lastAllowedTab.set(windowId, tabId);
+      return;
+    }
+    return inspect(tabId, url, windowId);
+  }).catch(() => {});
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   navigation.delete(tabId); lastSafe.delete(tabId);
+  for (const [windowId, storedTabId] of lastAllowedTab) {
+    if (storedTabId === tabId) lastAllowedTab.delete(windowId);
+  }
 });
 chrome.windows.onFocusChanged.addListener(() => { void sweepActive(); });
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -183,9 +224,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RECHECK_ALARM) { connect(); void sweepActive(); }
 });
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || message?.type !== 'refresh-anchor') return;
-  void statusNow(true).then(() => reply({ ok: true }));
-  return true;
+  if (sender.id !== chrome.runtime.id) return;
+  if (message?.type === 'refresh-anchor') {
+    void statusNow(true).then(() => reply({ ok: true }));
+    return true;
+  }
+  if (message?.type === 'leave-blocked-tab') {
+    void leaveBlockedTab(sender.tab).then(() => reply({ ok: true }), () => reply({ ok: false }));
+    return true;
+  }
 });
 void chrome.alarms.create(RECHECK_ALARM, { periodInMinutes: 0.5 });
 void configure();
