@@ -8,11 +8,30 @@ interface Props {
   changeLocalhost: (allow: boolean) => void;
 }
 
+function normalizePattern(raw: string): string {
+  let value = raw.trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) {
+    value = value.replace(/^https?:\/\//i, "");
+  }
+  const hashIndex = value.indexOf("#");
+  if (hashIndex >= 0) value = value.slice(0, hashIndex);
+  const split = value.search(/[/?]/);
+  let host = (split < 0 ? value : value.slice(0, split)).replace(/:\d+$/, "");
+  const suffix = split < 0 ? "" : value.slice(split);
+  const wildcard = host.startsWith("*.") ? "*." : "";
+  if (wildcard) host = host.slice(2);
+  host = host.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
+  if (!host) return raw.trim();
+  const cleanSuffix = suffix === "/" || suffix === "/*" ? "" : suffix;
+  return `${wildcard}${host}${cleanSuffix}`;
+}
+
 export function DomainFields({ domains, allowLocalhost, changeDomains, changeLocalhost }: Props) {
   const [input, setInput] = useState("");
 
   function add(patterns: string[]) {
-    const tags = patterns.map((pattern) => pattern.trim()).filter(Boolean);
+    const tags = patterns.map(normalizePattern).filter(Boolean);
     changeDomains([...new Set([...domains, ...tags])].slice(0, 100));
     setInput("");
   }

@@ -20,7 +20,7 @@ export function isAllowed(value, status, includeSubdomains = false) {
     const wildcard = rule.startsWith('*.');
     if (wildcard) rule = rule.slice(2);
     const split = rule.search(/[/?#]/);
-    const ruleHost = normalizeDomain(split < 0 ? rule : rule.slice(0, split));
+    const ruleHost = normalizeDomain((split < 0 ? rule : rule.slice(0, split)).replace(/:\d+$/, ''));
     if (!ruleHost) return false;
     if (host !== ruleHost && !((wildcard || includeSubdomains) && host.endsWith('.' + ruleHost))) return false;
     if (split < 0) return true;

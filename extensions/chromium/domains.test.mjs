@@ -9,6 +9,8 @@ test('exact hosts, normalization and explicit subdomains', () => {
   assert.equal(isAllowed('https://example.com/', policy('*.example.com')), true);
   assert.equal(isAllowed('https://sub.example.com/', policy('*.example.com')), true);
   assert.equal(isAllowed('https://sub.example.com/', policy('example.com'), true), true);
+  assert.equal(isAllowed('https://lms.eng.asu.edu.eg/course/1', policy('https://lms.eng.asu.edu.eg/*')), true);
+  assert.equal(isAllowed('https://example.com/docs', policy('https://example.com:8443/docs')), true);
 });
 test('path and query prefixes', () => {
   assert.equal(isAllowed('https://github.com/myorg/repo', policy('github.com/myorg/*')), true);
