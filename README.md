@@ -29,6 +29,20 @@ Anchor stores everything locally under `%APPDATA%\Anchor`:
 - `anchor.db` — sessions, profiles, preferences, and Brain Dump notes (SQLite)
 - `braindump\` — daily Markdown exports of your Brain Dump notes
 
+## Installation
+
+On Windows 10/11 (x64), run the installation script in PowerShell to check/install prerequisites, build Anchor, and launch the installer:
+
+```powershell
+irm https://raw.githubusercontent.com/aspxc1/Anchor/main/install.ps1 | iex
+```
+
+Or from a local clone:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
 ## Building from Source
 
 Requires Windows 10/11 (x64) with Node.js 24, the stable Rust toolchain, Visual Studio C++ Build Tools (with the Windows SDK), and the Microsoft Edge WebView2 Runtime.
